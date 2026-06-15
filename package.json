@@ -1,0 +1,48 @@
+{
+  "name": "daily-huddle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/tauri.mjs dev",
+    "dev:web": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "predist": "node scripts/prepare-dist.mjs",
+    "dist": "node scripts/tauri.mjs build && node scripts/copy-dist.mjs",
+    "tauri": "node scripts/tauri.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "jquery": "^4.0.0",
+    "toastr": "^2.1.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tanstack/react-table": "^8.21.3",
+    "@tauri-apps/cli": "^2.10.0",
+    "@types/jquery": "^4.0.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/toastr": "^2.1.43",
+    "@vitejs/plugin-react": "^6.0.1",
+    "axios": "^1.17.0",
+    "clsx": "^2.1.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "framer-motion": "^12.40.0",
+    "globals": "^17.6.0",
+    "lucide-react": "^1.18.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.17.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12",
+    "zustand": "^5.0.14"
+  }
+}

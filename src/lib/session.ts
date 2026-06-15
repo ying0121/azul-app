@@ -1,0 +1,35 @@
+import type { Clinic } from '@/types/auth'
+
+const TOKEN_KEY = 'dh_token'
+const CLINIC_KEY = 'dh_clinic'
+
+export function saveToken(token: string) {
+  sessionStorage.setItem(TOKEN_KEY, token.trim())
+}
+
+export function getToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY)
+}
+
+export function clearToken() {
+  sessionStorage.removeItem(TOKEN_KEY)
+}
+
+export function saveClinic(clinic: Clinic) {
+  sessionStorage.setItem(CLINIC_KEY, JSON.stringify(clinic))
+}
+
+export function getClinic(): Clinic | null {
+  const raw = sessionStorage.getItem(CLINIC_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as Clinic
+  } catch {
+    return raw
+  }
+}
+
+export function clearSession() {
+  clearToken()
+  sessionStorage.removeItem(CLINIC_KEY)
+}
