@@ -1,22 +1,21 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { getApiBaseUrl, getApiConfigLabel } from '@/lib/apiConfig'
 import { clearToken, getToken, saveToken } from '@/lib/session'
 
-const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL
-const API_BASE_URL = import.meta.env.DEV
-  ? ''
-  : configuredBaseUrl != null && String(configuredBaseUrl).trim() !== ''
-    ? String(configuredBaseUrl).replace(/\/$/, '').replace(/\/\/localhost\b/i, '//127.0.0.1')
-    : ''
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
+  baseURL: getApiBaseUrl(),
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 15000,
 })
+
+if (import.meta.env.DEV) {
+  console.info(`[api] ${getApiConfigLabel()}`)
+}
 
 /** Apply token to session storage and every axios request (Authorization: <token>) */
 export function setAuthToken(token: string | null) {
@@ -55,8 +54,7 @@ apiClient.interceptors.response.use(
       if (error.response?.status === 401) {
         message = 'Your session has expired. Please log in again.'
       } else if (error.code === 'ERR_NETWORK' || !error.response) {
-        message =
-          'Unable to reach the API server. Make sure the backend is running and check VITE_API_BASE_URL in .env.'
+        message = `Unable to reach the API server (${getApiConfigLabel()}). Check VITE_API_BASE_URL and VITE_API_PROXY_TARGET in .env, then rebuild for production.`
       } else {
         message = 'An unexpected error occurred. Please try again.'
       }

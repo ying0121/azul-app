@@ -33,15 +33,15 @@ This starts the Vite dev server and opens the Tauri window.
 npm run dev:web
 ```
 
-Open [http://localhost:5173](http://localhost:5173). API calls use the Vite proxy (see below).
+Open [http://localhost:5173](http://localhost:5173). API calls are proxied to `VITE_API_PROXY_TARGET` from your `.env` file.
 
 ### Why browser login can fail (but the desktop app works)
 
-In the browser, the app runs on `http://localhost:5173` and the API is on `http://localhost:5001`. That is a **cross-origin** request. Browsers block it unless the API server allows **CORS**.
+In the browser, the app runs on `http://localhost:5173` and the API is on another host. That is a **cross-origin** request unless you use the dev proxy.
 
-**Dev fix (already configured):** `.env.development` sets an empty `VITE_API_BASE_URL` so requests go through the **Vite proxy** (`/login/*` → `http://localhost:5001`). Use `npm run dev:web` and open `http://localhost:5173`.
+**Dev fix:** set `VITE_API_PROXY_TARGET` in `.env` (same as your backend). `.env.development` enables the Vite proxy automatically.
 
-**Production / packaged app:** uses `.env` with the full API URL (`http://localhost:5001`) — no browser CORS involved.
+**Production / packaged app:** uses `VITE_API_BASE_URL` from `.env` at build time — rebuild after changing it.
 
 ### Demo credentials (mock mode)
 
@@ -55,18 +55,24 @@ When `VITE_USE_MOCK=true` in `.env`:
 
 ## Environment
 
-Copy `.env.example` to `.env`:
+Copy `.env.example` to `.env` and set your backend URLs:
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_API_BASE_URL` | Backend API base URL |
+| `VITE_API_BASE_URL` | Backend API base URL (used in **production** / packaged builds) |
+| `VITE_API_PROXY_TARGET` | Backend URL for the **Vite dev proxy** (`npm run dev`, `npm run dev:web`) |
 | `VITE_USE_MOCK` | `true` to use mock auth/data |
+| `VITE_CLINIC_TIMEZONE` | Clinic timezone for date filters (default `America/New_York`) |
 
-## API Endpoints (production)
+Both API variables should normally point at the same server, e.g. `https://ehr.example.com`.
 
-Set `VITE_USE_MOCK=false` and `VITE_API_BASE_URL` to your server (e.g. `http://localhost:5001`).
+**Development:** `.env.development` sets `VITE_API_USE_PROXY=true` so the app calls `/daily-huddle/*` on the Vite server, which proxies to `VITE_API_PROXY_TARGET` from your `.env`.
 
-The app sends `withCredentials: true` for cookies and attaches the login token on every request as `Authorization: <token>` (raw token value, no `Bearer` prefix).
+**Production (`npm run build` / `npm run dist`):** the app calls `VITE_API_BASE_URL` directly. Rebuild after changing `.env`.
+
+## API
+
+Auth uses a clinic access code (`POST /daily-huddle/auth`). The token is stored in session storage and sent on every request as `Authorization: <token>` (raw value, no `Bearer` prefix).
 
 ### POST `/login/login`
 

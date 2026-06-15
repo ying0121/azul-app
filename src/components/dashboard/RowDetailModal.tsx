@@ -1,7 +1,7 @@
 import { Modal } from '@/components/ui/Modal'
 import { formatDetailValue, formatUsDate } from '@/lib/formatDate'
 import { useStatusColorStore } from '@/stores/statusColorStore'
-import type { PatientRow } from '@/types/patient'
+import type { HedisDetails, MedAdhDetails, PatientRow } from '@/types/patient'
 import { isHedisRow } from '@/types/patient'
 import { HEDIS_STATUS_DETAIL_KEYS, lookupHedisStatus } from '@/types/statusColor'
 import {
@@ -233,10 +233,11 @@ function DetailGroup({
 }: {
   title: string
   keys: string[]
-  details: Record<string, string | number>
+  details: HedisDetails | MedAdhDetails
   labels: Record<string, string>
 }) {
-  const visibleKeys = keys.filter((key) => hasDetailValue(details[key]))
+  const detailRecord = details as unknown as Record<string, string | number | undefined>
+  const visibleKeys = keys.filter((key) => hasDetailValue(detailRecord[key]))
   if (visibleKeys.length === 0) return null
 
   return (
@@ -248,13 +249,13 @@ function DetailGroup({
             <StatusDetailField
               key={key}
               label={labels[key] ?? key}
-              value={details[key]}
+              value={detailRecord[key]}
             />
           ) : (
             <DetailField
               key={key}
               label={labels[key] ?? key}
-              value={formatDetailValue(key, details[key])}
+              value={formatDetailValue(key, detailRecord[key])}
             />
           ),
         )}

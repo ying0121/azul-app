@@ -6,7 +6,6 @@ import type {
   StatusColorsByType,
 } from '@/types/statusColor'
 import {
-  EMPTY_STATUS_COLORS_BY_TYPE,
   groupStatusColorsByType,
 } from '@/types/statusColor'
 
