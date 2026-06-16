@@ -39,8 +39,6 @@ const hedisLabels: Record<string, string> = {
   loinc2: 'LOINC 2',
   cpt1: 'CPT 1',
   cpt2: 'CPT 2',
-  num_flag: 'Numerator Flag',
-  den_flag: 'Denominator Flag',
 }
 
 const medAdhLabels: Record<string, string> = {
@@ -83,8 +81,6 @@ const medAdhLabels: Record<string, string> = {
   rx_dates_given: 'Rx Dates Given',
   rx_refills: 'Rx Refills',
   rx_dosage: 'Rx Dosage',
-  num_flag: 'Numerator Flag',
-  den_flag: 'Denominator Flag',
 }
 
 const HEDIS_DETAIL_GROUPS: { title: string; keys: string[] }[] = [
@@ -94,7 +90,6 @@ const HEDIS_DETAIL_GROUPS: { title: string; keys: string[] }[] = [
     keys: ['appt_date', 'appt_pcp', 'v_specialty'],
   },
   { title: 'Key Dates', keys: ['admit_date', 'event_date', 'discharge_date'] },
-  { title: 'Compliance', keys: ['num_flag', 'den_flag'] },
 ]
 
 const MED_ADH_DETAIL_GROUPS: { title: string; keys: string[] }[] = [
@@ -140,7 +135,6 @@ const MED_ADH_DETAIL_GROUPS: { title: string; keys: string[] }[] = [
     ],
   },
   { title: 'Appointments', keys: ['appt_date', 'appt_visit', 'event_date', 'v_specialty'] },
-  { title: 'Compliance', keys: ['num_flag', 'den_flag'] },
 ]
 
 function hasDetailValue(value: unknown): boolean {
@@ -376,9 +370,6 @@ export function RowDetailModal({ row, onClose }: RowDetailModalProps) {
               <DetailField label="Quality Program" value={row.qp_name || row.qp_id} />
               <DetailField label="Measure" value={row.measure} />
               <DetailField label="DOS" value={formatUsDate(row.dos)} />
-              <DetailField label="Year" value={row.cyear} />
-              <DetailField label="Measure ID" value={row.measure_id} />
-              <DetailField label="Observation ID" value={row.obs_id} />
             </dl>
           </section>
         </div>

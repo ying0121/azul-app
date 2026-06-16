@@ -1,11 +1,22 @@
 const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/
 const US_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/
 
+export function isNullishValue(value: string | number | null | undefined): boolean {
+  if (value == null) return true
+
+  const raw = String(value).trim().toLowerCase()
+  return raw === '' || raw === 'null' || raw === 'undefined'
+}
+
+export function normalizeDisplayValue(value: string | number | null | undefined): string {
+  if (isNullishValue(value)) return ''
+  return String(value).trim()
+}
+
 export function formatUsDate(value: string | number | null | undefined): string {
-  if (value == null) return ''
+  if (isNullishValue(value)) return ''
 
   const raw = String(value).trim()
-  if (!raw) return ''
 
   const isoMatch = raw.match(ISO_DATE_PREFIX)
   if (isoMatch) {
@@ -43,7 +54,7 @@ export function formatDetailValue(
   key: string,
   value: string | number | null | undefined,
 ): string {
-  if (value == null || value === '') return '—'
+  if (isNullishValue(value)) return '—'
   if (DATE_DETAIL_KEYS.has(key)) return formatUsDate(value) || '—'
-  return String(value)
+  return normalizeDisplayValue(value) || '—'
 }

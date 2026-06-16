@@ -1,5 +1,6 @@
-import { formatUsDate } from '@/lib/formatDate'
 import { getClinicTodayDateString } from '@/lib/clinicDate'
+import { formatUsDate } from '@/lib/formatDate'
+import { getRowApptDate, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 import type { HedisStatusMap } from '@/types/statusColor'
 import { resolveRowStatusStyle } from '@/types/statusColor'
@@ -24,8 +25,7 @@ function escapeHtml(value: string | number | null | undefined): string {
 }
 
 function getApptDate(row: PatientRow): string {
-  const details = row.details as { appt_date?: string }
-  return formatUsDate(details.appt_date || row.dos)
+  return getRowApptDate(row)
 }
 
 function getDoctorName(row: PatientRow): string {
@@ -52,7 +52,7 @@ function buildTableRows(
   if (rows.length === 0) {
     return `
       <tr>
-        <td colspan="5" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
+        <td colspan="7" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
           No visits scheduled for today.
         </td>
       </tr>
@@ -71,7 +71,9 @@ function buildTableRows(
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.ins_name || row.ins_id || '—')}</td>
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.measure || '—')}</td>
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getDoctorName(row) || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getApptDate(row) || '—')}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getApptDate(row))}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getRowValue1(row))}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getRowValue2(row))}</td>
         </tr>
       `
     })
@@ -172,6 +174,8 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Measure</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Doctor</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Appt Date</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Value 1</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Value 2</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -213,7 +217,7 @@ export function buildDailyVisitEmailText(context: DailyVisitEmailContext): strin
     `Quality Program: ${context.qualityProgramName || '—'}`,
     '',
     'Daily Visit Table',
-    'Patient | Insurance | Measure | Doctor | Appt Date',
+    'Patient | Insurance | Measure | Doctor | Appt Date | Value 1 | Value 2',
   ]
 
   if (context.rows.length === 0) {
@@ -226,7 +230,9 @@ export function buildDailyVisitEmailText(context: DailyVisitEmailContext): strin
           row.ins_name || row.ins_id || '—',
           row.measure || '—',
           getDoctorName(row) || '—',
-          getApptDate(row) || '—',
+          getApptDate(row),
+          getRowValue1(row),
+          getRowValue2(row),
         ].join(' | '),
       )
     })

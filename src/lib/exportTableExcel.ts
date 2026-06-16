@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { formatUsDate } from '@/lib/formatDate'
+import { getRowApptDate, getRowDos, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 
 const HEADERS = [
@@ -11,6 +12,9 @@ const HEADERS = [
   'Phone',
   'DOB',
   'Measure',
+  'Appt Date',
+  'Value 1',
+  'Value 2',
   'DOS',
 ]
 
@@ -19,6 +23,10 @@ function sourceLabel(source: PatientRow['source']): string {
 }
 
 function rowToCells(row: PatientRow): string[] {
+  const apptDate = getRowApptDate(row)
+  const value1 = getRowValue1(row)
+  const value2 = getRowValue2(row)
+
   return [
     sourceLabel(row.source),
     row.ins_name || row.ins_id || '',
@@ -28,7 +36,10 @@ function rowToCells(row: PatientRow): string[] {
     row.pt_phone || '',
     formatUsDate(row.pt_dob) || '',
     row.measure || '',
-    formatUsDate(row.dos) || '',
+    apptDate,
+    value1,
+    value2,
+    getRowDos(row),
   ]
 }
 

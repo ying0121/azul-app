@@ -14,6 +14,7 @@ import { Eye, Pill, Stethoscope } from 'lucide-react'
 import type { PatientRow } from '@/types/patient'
 import { getPatientRowId } from '@/types/patient'
 import { formatUsDate } from '@/lib/formatDate'
+import { getRowApptDate, getRowDos, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
 import { useStatusColorStore } from '@/stores/statusColorStore'
 import { type SourceFilterState } from '@/types/filters'
@@ -95,9 +96,27 @@ export function DataTable({
       },
       { header: 'Measure', accessorKey: 'measure' },
       {
+        header: 'Appt Date',
+        id: 'appt_date',
+        accessorFn: (row) => getRowApptDate(row),
+        cell: ({ row }) => getRowApptDate(row.original) || '—',
+      },
+      {
+        header: 'Value 1',
+        id: 'value1',
+        accessorFn: (row) => getRowValue1(row),
+        cell: ({ row }) => getRowValue1(row.original),
+      },
+      {
+        header: 'Value 2',
+        id: 'value2',
+        accessorFn: (row) => getRowValue2(row),
+        cell: ({ row }) => getRowValue2(row.original),
+      },
+      {
         header: 'DOS',
         accessorKey: 'dos',
-        cell: ({ getValue }) => formatUsDate(getValue() as string),
+        cell: ({ row }) => getRowDos(row.original) || '—',
       },
       {
         id: 'actions',
