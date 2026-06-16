@@ -87,6 +87,8 @@ export interface PatientRowBase {
   pt_other_phone: string
   pt_email: string
   dos: string
+  pcp_fname: string
+  pcp_lname: string
 }
 
 export type HedisPatientRow = PatientRowBase & {

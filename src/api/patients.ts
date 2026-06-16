@@ -1,5 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
 import { getClinicYear } from '@/lib/clinicDate'
+import { saveHuddleToken } from '@/lib/session'
 import { mockPatients } from './mock'
 import type { PatientFilters } from '@/types/filters'
 import type {
@@ -12,7 +13,13 @@ import type {
 interface PatientsApiResponse {
   status: string
   data?: unknown[]
+  token?: string
   message?: string
+}
+
+export interface PatientsFetchResult {
+  rows: PatientRow[]
+  token: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -154,6 +161,8 @@ function parsePatientRow(item: unknown): PatientRow | null {
     pt_other_phone: readString(item, 'pt_other_phone', 'ptOtherPhone', 'PtOtherPhone'),
     pt_email: readString(item, 'pt_email', 'ptEmail', 'PtEmail'),
     dos: readString(item, 'dos', 'Dos', 'DOS'),
+    pcp_fname: readString(item, 'pcp_fname', 'pcpFname', 'PcpFname'),
+    pcp_lname: readString(item, 'pcp_lname', 'pcpLname', 'PcpLname'),
   }
 
   const details = mapDetails(source, readDetails(item))
@@ -173,10 +182,14 @@ function filterMockPatients(filters: PatientFilters): PatientRow[] {
   })
 }
 
-export async function fetchPatients(filters: PatientFilters = {}): Promise<PatientRow[]> {
+export async function fetchPatients(
+  filters: PatientFilters = {},
+): Promise<PatientsFetchResult> {
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 400))
-    return filterMockPatients(filters)
+    const token = 'mock-huddle-token'
+    saveHuddleToken(token)
+    return { rows: filterMockPatients(filters), token }
   }
 
   const payload: Record<string, string | number> = {
@@ -199,7 +212,14 @@ export async function fetchPatients(filters: PatientFilters = {}): Promise<Patie
     )
   }
 
-  return data.data
+  const token = typeof data.token === 'string' ? data.token.trim() : ''
+  if (token) {
+    saveHuddleToken(token)
+  }
+
+  const rows = data.data
     .map(parsePatientRow)
     .filter((row): row is PatientRow => row != null)
+
+  return { rows, token }
 }

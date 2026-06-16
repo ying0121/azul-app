@@ -222,6 +222,8 @@ export const mockPatients: PatientRow[] = [
     pt_other_phone: '',
     pt_email: 'maria.g@email.com',
     dos: '2026-05-12',
+    pcp_fname: 'John',
+    pcp_lname: 'Smith',
     details: {
       value1: '7.2',
       value2: '6.8',
@@ -265,6 +267,8 @@ export const mockPatients: PatientRow[] = [
     pt_other_phone: '',
     pt_email: 'maria.g@email.com',
     dos: '2026-01-15',
+    pcp_fname: 'John',
+    pcp_lname: 'Smith',
     details: {
       med_1: 'Metformin 500mg',
       med_2: '',
@@ -330,6 +334,8 @@ export const mockPatients: PatientRow[] = [
     pt_other_phone: '',
     pt_email: 'j.thompson@email.com',
     dos: '2026-04-28',
+    pcp_fname: 'Sarah',
+    pcp_lname: 'Lee',
     details: {
       value1: '128/82',
       value2: '124/80',
@@ -373,6 +379,8 @@ export const mockPatients: PatientRow[] = [
     pt_other_phone: '',
     pt_email: 'j.thompson@email.com',
     dos: '2025-12-01',
+    pcp_fname: 'Sarah',
+    pcp_lname: 'Lee',
     details: {
       med_1: 'Lisinopril 10mg',
       med_2: '',

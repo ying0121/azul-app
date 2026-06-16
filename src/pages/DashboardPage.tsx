@@ -5,6 +5,7 @@ import { exportPatientsToExcel } from '@/lib/exportTableExcel'
 import { getClinicTodayDateString } from '@/lib/clinicDate'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
 import { fetchPatients } from '@/api/patients'
+import type { PatientRow } from '@/types/patient'
 import { DailyEmailPreviewModal } from '@/components/dashboard/DailyEmailPreviewModal'
 import { FilterModal } from '@/components/dashboard/FilterModal'
 import { StatusColorModal } from '@/components/dashboard/StatusColorModal'
@@ -40,7 +41,7 @@ export function DashboardPage() {
   const hedisStatus = useStatusColorStore((s) => s.hedisStatus)
   const clinicId = stableClinicId(clinic)
 
-  const [patients, setPatients] = useState<Awaited<ReturnType<typeof fetchPatients>>>([])
+  const [patients, setPatients] = useState<PatientRow[]>([])
   const [insuranceOptions, setInsuranceOptions] = useState<InsuranceOption[]>([])
   const [qualityProgramOptions, setQualityProgramOptions] = useState<QualityProgramOption[]>([])
   const [selectedInsuranceId, setSelectedInsuranceId] = useState('')
@@ -102,8 +103,8 @@ export function DashboardPage() {
     else setIsLoading(true)
 
     try {
-      const data = await fetchPatients(buildPatientFilters(activeClinicId))
-      setPatients(data)
+      const { rows } = await fetchPatients(buildPatientFilters(activeClinicId))
+      setPatients(rows)
       hasLoadedPatientsOnce.current = true
     } catch (err: unknown) {
       showAlertRef.current(

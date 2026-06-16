@@ -2,13 +2,14 @@ import { formatUsDate } from '@/lib/formatDate'
 import { getClinicTodayDateString } from '@/lib/clinicDate'
 import type { PatientRow } from '@/types/patient'
 import type { HedisStatusMap } from '@/types/statusColor'
-import { lookupHedisStatus, resolveRowStatusStyle } from '@/types/statusColor'
+import { resolveRowStatusStyle } from '@/types/statusColor'
 
 export interface DailyVisitEmailContext {
   clinicName: string
   reportDate: string
   insuranceName: string
   qualityProgramName: string
+  huddleToken: string
   rows: PatientRow[]
   statusMap: HedisStatusMap
 }
@@ -22,23 +23,19 @@ function escapeHtml(value: string | number | null | undefined): string {
     .replace(/'/g, '&#39;')
 }
 
-function sourceLabel(source: PatientRow['source']): string {
-  return source === 'hedis' ? 'HEDIS' : 'Med Adh'
-}
-
 function getApptDate(row: PatientRow): string {
   const details = row.details as { appt_date?: string }
   return formatUsDate(details.appt_date || row.dos)
 }
 
-function statusLabel(
-  statusMap: HedisStatusMap,
-  value: string | number | null | undefined,
-): string {
-  const entry = lookupHedisStatus(statusMap, value)
-  if (entry) return entry.display || entry.status
-  if (value == null || value === '') return '—'
-  return String(value)
+function getDoctorName(row: PatientRow): string {
+  return `${row.pcp_fname} ${row.pcp_lname}`.trim()
+}
+
+function getTokenMid(huddleToken: string, row: PatientRow): string {
+  const mid = row.pt_subno?.trim() ?? ''
+  if (!huddleToken && !mid) return '—'
+  return `${huddleToken}${mid}`
 }
 
 function buildSummary(rows: PatientRow[]) {
@@ -47,11 +44,15 @@ function buildSummary(rows: PatientRow[]) {
   return { total: rows.length, hedisCount, medAdhCount }
 }
 
-function buildTableRows(rows: PatientRow[], statusMap: HedisStatusMap): string {
+function buildTableRows(
+  rows: PatientRow[],
+  huddleToken: string,
+  statusMap: HedisStatusMap,
+): string {
   if (rows.length === 0) {
     return `
       <tr>
-        <td colspan="10" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
+        <td colspan="5" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
           No visits scheduled for today.
         </td>
       </tr>
@@ -63,20 +64,14 @@ function buildTableRows(rows: PatientRow[], statusMap: HedisStatusMap): string {
       const rowStyle = resolveRowStatusStyle(statusMap, row.details)
       const backgroundColor = rowStyle.backgroundColor || (index % 2 === 0 ? '#ffffff' : '#f8fafc')
       const textColor = rowStyle.color || '#0f172a'
-      const patientName = `${row.pt_fname} ${row.pt_lname}`.trim()
 
       return `
         <tr style="background-color:${backgroundColor};color:${textColor};">
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:600;">${escapeHtml(sourceLabel(row.source))}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:600;">${escapeHtml(getTokenMid(huddleToken, row))}</td>
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.ins_name || row.ins_id || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.qp_name || row.qp_id || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:600;">${escapeHtml(patientName || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.pt_subno || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.pt_phone || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(formatUsDate(row.pt_dob) || '—')}</td>
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.measure || '—')}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getDoctorName(row) || '—')}</td>
           <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getApptDate(row) || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(statusLabel(statusMap, row.details.m_status))}</td>
         </tr>
       `
     })
@@ -88,10 +83,17 @@ export function buildDailyVisitEmailSubject(context: DailyVisitEmailContext): st
 }
 
 export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): string {
-  const { clinicName, reportDate, insuranceName, qualityProgramName, rows, statusMap } =
-    context
+  const {
+    clinicName,
+    reportDate,
+    insuranceName,
+    qualityProgramName,
+    huddleToken,
+    rows,
+    statusMap,
+  } = context
   const summary = buildSummary(rows)
-  const tableRows = buildTableRows(rows, statusMap)
+  const tableRows = buildTableRows(rows, huddleToken, statusMap)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -162,19 +164,14 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
                   Daily Visit Table
                 </div>
                 <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px;">
-                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;min-width:920px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;min-width:640px;">
                     <thead>
                       <tr style="background-color:#f1f5f9;">
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Source</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Patient</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Insurance</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Quality Program</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Patient Name</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">MID</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Phone</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">DOB</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Measure</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Doctor</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Appt Date</th>
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Measure Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -188,7 +185,8 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
             <tr>
               <td style="padding:0 32px 28px;">
                 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;font-size:12px;line-height:1.6;color:#64748b;">
-                  This report was generated automatically from the Daily Huddle application.
+                  This report was generated automatically from Conector Health.
+                  Patient identifiers don't use real personal information. They are generated by the system.
                   Row colors reflect configured measure and patient status colors for quick review.
                 </div>
               </td>
@@ -196,7 +194,7 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
 
             <tr>
               <td style="padding:18px 32px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#94a3b8;text-align:center;">
-                &copy; ${new Date().getFullYear()} Daily Huddle &bull; Confidential clinic report
+                &copy; ${new Date().getFullYear()} Conector Health &bull; Confidential clinic report
               </td>
             </tr>
           </table>
@@ -215,26 +213,20 @@ export function buildDailyVisitEmailText(context: DailyVisitEmailContext): strin
     `Quality Program: ${context.qualityProgramName || '—'}`,
     '',
     'Daily Visit Table',
-    'Source | Insurance | Quality Program | Patient Name | MID | Phone | DOB | Measure | Appt Date | Measure Status',
+    'Patient | Insurance | Measure | Doctor | Appt Date',
   ]
 
   if (context.rows.length === 0) {
     lines.push('No visits scheduled for today.')
   } else {
     context.rows.forEach((row) => {
-      const patientName = `${row.pt_fname} ${row.pt_lname}`.trim()
       lines.push(
         [
-          sourceLabel(row.source),
+          getTokenMid(context.huddleToken, row),
           row.ins_name || row.ins_id || '—',
-          row.qp_name || row.qp_id || '—',
-          patientName || '—',
-          row.pt_subno || '—',
-          row.pt_phone || '—',
-          formatUsDate(row.pt_dob) || '—',
           row.measure || '—',
+          getDoctorName(row) || '—',
           getApptDate(row) || '—',
-          statusLabel(context.statusMap, row.details.m_status),
         ].join(' | '),
       )
     })

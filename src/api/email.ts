@@ -1,5 +1,5 @@
 import { apiClient, USE_MOCK } from './client'
-import { fetchPatients } from './patients'
+import { fetchPatients, type PatientsFetchResult } from './patients'
 import {
   buildDailyVisitEmailHtml,
   buildDailyVisitEmailSubject,
@@ -16,6 +16,7 @@ export interface SendDailyEmailRequest {
   clinic_id: string | number
   ins_id: string
   qp_id: string
+  token: string
   subject: string
   html: string
   text: string
@@ -33,7 +34,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function fetchTodayVisitPatients(
   filters: Pick<PatientFilters, 'clinic_id' | 'ins_id' | 'qp_id'>,
-): Promise<Awaited<ReturnType<typeof fetchPatients>>> {
+): Promise<PatientsFetchResult> {
   const today = getClinicTodayDateString()
 
   return fetchPatients({
@@ -57,6 +58,7 @@ export function buildDailyEmailPayload(
     clinic_id: clinicId,
     ins_id: insId,
     qp_id: qpId,
+    token: context.huddleToken,
     subject: buildDailyVisitEmailSubject({ ...context, reportDate }),
     html: buildDailyVisitEmailHtml({ ...context, reportDate }),
     text: buildDailyVisitEmailText({ ...context, reportDate }),
@@ -88,7 +90,7 @@ export async function prepareDailyVisitEmail(options: {
   qualityProgramName: string
   statusMap: HedisStatusMap
 }): Promise<DailyEmailPreviewData> {
-  const rows = await fetchTodayVisitPatients({
+  const { rows, token } = await fetchTodayVisitPatients({
     clinic_id: options.clinicId,
     ins_id: options.insId,
     qp_id: options.qpId,
@@ -100,6 +102,7 @@ export async function prepareDailyVisitEmail(options: {
     reportDate,
     insuranceName: options.insuranceName,
     qualityProgramName: options.qualityProgramName,
+    huddleToken: token,
     rows,
     statusMap: options.statusMap,
   }
