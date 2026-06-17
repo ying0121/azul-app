@@ -16,6 +16,7 @@ export function AuthPage() {
   const [code, setCode] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [statusText, setStatusText] = useState('Continue')
+  const [shakeTrigger, setShakeTrigger] = useState(0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,6 +32,7 @@ export function AuthPage() {
       const result = await authenticate({ code: code.trim() })
 
       if (!result.ok) {
+        setShakeTrigger((count) => count + 1)
         showAlert('error', 'Authentication Failed', result.message)
         return
       }
@@ -57,7 +59,10 @@ export function AuthPage() {
       <div className="auth-page__toolbar">
         <ThemeToggle />
       </div>
-      <AuthCard subtitle="Enter your clinic access code to continue">
+      <AuthCard
+        subtitle="Enter your clinic access code to continue"
+        shakeTrigger={shakeTrigger}
+      >
         <form className="auth-form" onSubmit={(e) => void handleSubmit(e)}>
           <label className="field">
             <span className="field__label">Access Code</span>

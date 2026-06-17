@@ -2,6 +2,7 @@ import clsx from 'clsx'
 
 interface AvatarProps {
   name: string
+  acronym?: string
   imageUrl?: string
   size?: 'sm' | 'md' | 'lg'
 }
@@ -15,13 +16,15 @@ function getInitials(name: string) {
     .toUpperCase()
 }
 
-export function Avatar({ name, imageUrl, size = 'md' }: AvatarProps) {
+export function Avatar({ name, acronym, imageUrl, size = 'md' }: AvatarProps) {
+  const label = acronym?.trim() || getInitials(name)
+
   return (
     <div className={clsx('avatar', `avatar--${size}`)} title={name}>
       {imageUrl ? (
         <img src={imageUrl} alt={name} className="avatar__img" />
       ) : (
-        <span className="avatar__initials">{getInitials(name)}</span>
+        <span className="avatar__initials">{label}</span>
       )}
     </div>
   )

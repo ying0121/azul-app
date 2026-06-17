@@ -1,18 +1,19 @@
 import { motion } from 'framer-motion'
 import { LogOut } from 'lucide-react'
-import { Logo } from '@/components/ui/Logo'
+import { HeaderAccent } from '@/components/layout/HeaderAccent'
 import { Avatar } from '@/components/ui/Avatar'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useStatusColorStore } from '@/stores/statusColorStore'
-import { getClinicDisplayName } from '@/types/auth'
+import { getClinicAcronym, getClinicDisplayName } from '@/types/auth'
 import { useNavigate } from 'react-router-dom'
 
 export function Header() {
   const { clinic, reset } = useAuthStore()
   const navigate = useNavigate()
   const clinicName = getClinicDisplayName(clinic)
+  const clinicAcronym = getClinicAcronym(clinic)
 
   const handleLogout = async () => {
     await logout()
@@ -28,17 +29,12 @@ export function Header() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <Logo size="sm" />
-
-      <div className="header__message">
-        <span className="header__greeting">Welcome back, {clinicName}</span>
-        <span className="header__hint">
-          Review patient quality measures and medication adherence
-        </span>
-      </div>
+      <HeaderAccent clinicName={clinicName} />
 
       <div className="header__actions">
-        {clinic && <Avatar name={clinicName} size="md" />}
+        {clinic && (
+          <Avatar acronym={clinicAcronym} name={clinicName} size="lg" />
+        )}
         <ThemeToggle />
         <button
           className="header__logout btn btn--ghost"

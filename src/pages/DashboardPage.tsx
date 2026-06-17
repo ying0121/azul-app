@@ -364,7 +364,7 @@ export function DashboardPage() {
 
       <main className="dashboard__main">
         <TableToolbar
-          title="Patient Quality & Adherence"
+          title="Clinical Quality and Med Adherence Alerts"
           search={search}
           onSearchChange={setSearch}
           onRefresh={handleRefresh}
