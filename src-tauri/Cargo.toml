@@ -27,5 +27,8 @@ rand = "0.8"
 thiserror = "2"
 bytes = "1"
 webrtc = "0.17"
-xcap = "0.9"
 openh264 = { version = "0.9", features = ["source"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-capture = "2.0"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }

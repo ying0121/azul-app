@@ -1,5 +1,5 @@
 //! ViewDesk screen-sharing sender — Rust port of the browser sender script.
-//! Handles WebSocket signaling, WebRTC negotiation, and screen capture.
+//! Handles WebSocket signaling, WebRTC negotiation, and native screen capture.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -38,6 +38,15 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 use webrtc::track::track_local::TrackLocal;
 use webrtc::rtp_transceiver::rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType};
 use webrtc::rtp_transceiver::RTCPFeedback;
+
+#[cfg(windows)]
+use windows::Win32::Foundation::POINT;
+#[cfg(windows)]
+use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
+#[cfg(windows)]
+use windows_capture::dxgi_duplication_api::{DxgiDuplicationApi, Error as DxgiError};
+#[cfg(windows)]
+use windows_capture::monitor::Monitor;
 
 const HEARTBEAT_MS: u64 = 500;
 const WS_RECONNECT_BASE_MS: u64 = 1000;
@@ -649,7 +658,17 @@ impl ScreenSender {
         }
 
         let point = self.config.monitor_point.as_ref().and_then(|resolve| resolve());
-        let (monitor_id, _, _) = pick_desktop_monitor(point)?;
+
+        #[cfg(not(windows))]
+        {
+            let _ = point;
+            return Err(ScreenError::Capture(
+                "native screen capture is only supported on Windows".into(),
+            ));
+        }
+
+        #[cfg(windows)]
+        let monitor = pick_desktop_monitor(point)?;
 
         let config = RTCConfiguration {
             ice_servers: ice_servers(),
@@ -778,14 +797,10 @@ impl ScreenSender {
             }
         });
 
-        // Start capture immediately (browser getDisplayMedia starts before ICE completes).
+        // Start native capture immediately (no browser screen-picker dialog).
+        #[cfg(windows)]
         tokio::task::spawn_blocking(move || {
-            run_capture_loop_blocking(
-                monitor_id,
-                std_frame_tx,
-                capture_token,
-                force_keyframe,
-            );
+            run_capture_loop_blocking(monitor, std_frame_tx, capture_token, force_keyframe);
         });
 
         tokio::spawn(async move {
@@ -1063,35 +1078,24 @@ fn parse_remote_answer(sdp_value: &Value) -> Result<RTCSessionDescription, Scree
     }
 }
 
-fn pick_desktop_monitor(point: Option<(i32, i32)>) -> Result<(u32, usize, usize), ScreenError> {
+#[cfg(windows)]
+fn monitor_from_point(x: i32, y: i32) -> Option<Monitor> {
+    let hmonitor = unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST) };
+    if hmonitor.is_invalid() {
+        return None;
+    }
+    Some(Monitor::from_raw_hmonitor(hmonitor.0))
+}
+
+#[cfg(windows)]
+fn pick_desktop_monitor(point: Option<(i32, i32)>) -> Result<Monitor, ScreenError> {
     if let Some((x, y)) = point {
-        if let Ok(monitor) = xcap::Monitor::from_point(x, y) {
-            return monitor_dimensions(monitor);
+        if let Some(monitor) = monitor_from_point(x, y) {
+            return Ok(monitor);
         }
     }
 
-    let monitors = xcap::Monitor::all().map_err(capture_err)?;
-    let monitor = monitors
-        .into_iter()
-        .find(|monitor| monitor.is_primary().unwrap_or(false))
-        .ok_or_else(|| ScreenError::Capture("no primary desktop display found".into()))?;
-
-    monitor_dimensions(monitor)
-}
-
-fn monitor_dimensions(monitor: xcap::Monitor) -> Result<(u32, usize, usize), ScreenError> {
-    let id = monitor.id().map_err(capture_err)?;
-    let width = monitor.width().map_err(capture_err)? as usize;
-    let height = monitor.height().map_err(capture_err)? as usize;
-    Ok((id, width, height))
-}
-
-fn monitor_by_id(id: u32) -> Result<xcap::Monitor, ScreenError> {
-    xcap::Monitor::all()
-        .map_err(capture_err)?
-        .into_iter()
-        .find(|monitor| monitor.id().map_err(capture_err).ok() == Some(id))
-        .ok_or_else(|| ScreenError::Capture(format!("monitor {id} not found")))
+    Monitor::primary().map_err(capture_err)
 }
 
 fn stream_dimensions(src_width: usize, src_height: usize) -> (usize, usize) {
@@ -1115,12 +1119,13 @@ fn rgb_to_yuv(r: i32, g: i32, b: i32) -> (u8, u8, u8) {
     )
 }
 
+/// DXGI Desktop Duplication returns BGRA8 pixel order.
 #[inline]
 fn read_rgb(pixels: &[u8], idx: usize) -> (i32, i32, i32) {
     (
-        pixels[idx] as i32,
-        pixels[idx + 1] as i32,
         pixels[idx + 2] as i32,
+        pixels[idx + 1] as i32,
+        pixels[idx] as i32,
     )
 }
 
@@ -1203,40 +1208,58 @@ fn pace_to_frame_interval(started: Instant) {
     }
 }
 
+#[cfg(windows)]
 fn run_capture_loop_blocking(
-    monitor_id: u32,
+    monitor: Monitor,
     frame_tx: std::sync::mpsc::SyncSender<Vec<u8>>,
     cancel: CancellationToken,
     force_keyframe: Arc<AtomicBool>,
 ) {
     let mut encoder: Option<VideoEncoder> = None;
-    let mut cached_monitor: Option<xcap::Monitor> = None;
     let mut scratch = FrameScratch::new();
+    let mut pixel_scratch = Vec::new();
     let mut first_frame = true;
+    let mut duplication: Option<DxgiDuplicationApi> = None;
 
     while !cancel.is_cancelled() {
         let started = std::time::Instant::now();
 
-        if cached_monitor.is_none() {
-            cached_monitor = monitor_by_id(monitor_id).ok();
+        if duplication.is_none() {
+            duplication = DxgiDuplicationApi::new(monitor).ok();
         }
-        let Some(monitor) = cached_monitor.clone() else {
-            break;
+        let Some(dup) = duplication.as_mut() else {
+            std::thread::sleep(Duration::from_millis(FRAME_INTERVAL_MS));
+            continue;
         };
 
-        let image = match monitor.capture_image() {
-            Ok(image) => image,
+        let frame_result = dup.acquire_next_frame(FRAME_INTERVAL_MS as u32);
+        let mut frame = match frame_result {
+            Ok(frame) => frame,
+            Err(DxgiError::Timeout) => continue,
+            Err(DxgiError::AccessLost) => {
+                duplication = None;
+                continue;
+            }
             Err(_) => {
-                cached_monitor = None;
+                duplication = None;
                 std::thread::sleep(Duration::from_millis(FRAME_INTERVAL_MS));
                 continue;
             }
         };
 
-        let src_width = image.width() as usize;
-        let src_height = image.height() as usize;
+        if frame.frame_info().LastPresentTime == 0 {
+            continue;
+        }
+
+        let buffer = match frame.buffer() {
+            Ok(buffer) => buffer,
+            Err(_) => continue,
+        };
+        let src_width = buffer.width() as usize;
+        let src_height = buffer.height() as usize;
+        let pixels = buffer.as_nopadding_buffer(&mut pixel_scratch);
         process_captured_frame(
-            image.as_raw(),
+            pixels,
             src_width,
             src_height,
             &mut encoder,
