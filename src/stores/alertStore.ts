@@ -1,14 +1,38 @@
 import { create } from 'zustand'
-import { showToast, type ToastType } from '@/lib/toastr'
 
-export type AlertType = ToastType
+export type AlertType = 'error' | 'warning' | 'success' | 'info'
 
-interface AlertState {
-  show: (type: AlertType, title: string, message: string) => void
+export interface ToastItem {
+  id: number
+  type: AlertType
+  title: string
+  message: string
 }
 
-export const useAlertStore = create<AlertState>(() => ({
+interface AlertState {
+  toasts: ToastItem[]
+  show: (type: AlertType, title: string, message: string) => void
+  dismiss: (id: number) => void
+}
+
+const TOAST_DURATION_MS = 5000
+
+export const useAlertStore = create<AlertState>((set, get) => ({
+  toasts: [],
   show: (type, title, message) => {
-    showToast(type, title, message)
+    const id = Date.now() + Math.floor(Math.random() * 1000)
+    set((state) => ({
+      toasts: [...state.toasts, { id, type, title, message }],
+    }))
+    window.setTimeout(() => {
+      get().dismiss(id)
+    }, TOAST_DURATION_MS)
+  },
+  dismiss: (id) => {
+    set((state) => ({
+      toasts: state.toasts.filter((toast) => toast.id !== id),
+    }))
   },
 }))
+
+export const useToastStore = useAlertStore

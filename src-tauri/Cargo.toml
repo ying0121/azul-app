@@ -8,27 +8,33 @@ rust-version = "1.77.2"
 
 [lib]
 name = "daily_huddle_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "2.11.2", features = [] }
-# Pin below 0.3.48 — 0.3.48 conflicts with cookie/tauri-utils blanket From impls (E0119).
-time = "=0.3.47"
-tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-tokio-util = "0.7"
-futures-util = "0.3"
-rand = "0.8"
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+tauri = { version = "2.11.2", features = ["tray-icon"] }
+tokio = { version = "1", default-features = false, features = ["sync", "time", "rt-multi-thread", "macros"] }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 thiserror = "2"
 bytes = "1"
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 webrtc = "0.17"
-openh264 = { version = "0.9", features = ["source"] }
+openh264 = { version = "0.9", default-features = false, features = ["source"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-capture = "2.0"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_Security"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
+panic = "abort"

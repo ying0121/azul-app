@@ -215,23 +215,6 @@ pub fn generate_sender_id() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-pub fn load_or_create_sender_id(app_data_dir: Option<std::path::PathBuf>) -> String {
-    if let Some(dir) = app_data_dir {
-        let path = dir.join("viewdesk-sender-id");
-        if let Ok(id) = std::fs::read_to_string(&path) {
-            let id = id.trim();
-            if id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) {
-                return id.to_owned();
-            }
-        }
-        let id = generate_sender_id();
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(&path, &id);
-        return id;
-    }
-    generate_sender_id()
-}
-
 pub fn to_ws_url(url: &str) -> String {
     let trimmed = url.trim().trim_end_matches('/');
     if trimmed.starts_with("ws://") || trimmed.starts_with("wss://") {
@@ -361,8 +344,8 @@ impl ScreenSender {
         self.closed.store(true, Ordering::SeqCst);
     }
 
-    pub async fn run(self) -> Result<(), ScreenError> {
-        let sender = Arc::new(self);
+    pub async fn run(self: Arc<Self>) -> Result<(), ScreenError> {
+        let sender = self;
         let mut backoff_ms = WS_RECONNECT_BASE_MS;
 
         while !sender.closed.load(Ordering::SeqCst) {
@@ -402,6 +385,7 @@ impl ScreenSender {
         let sender_id = self.config.sender_id.clone();
         let sender_name = self.config.sender_name.clone();
         let closed = Arc::clone(&self.closed);
+        let session_for_heartbeat = Arc::clone(&self.session);
 
         let heartbeat_handle = tokio::spawn(async move {
             let mut ticker = interval(Duration::from_millis(HEARTBEAT_MS));
@@ -410,11 +394,13 @@ impl ScreenSender {
                 if closed.load(Ordering::SeqCst) {
                     break;
                 }
+                let streaming = session_for_heartbeat.lock().await.streaming;
                 let payload = serde_json::json!({
                     "type": "heartbeat",
                     "senderId": sender_id,
                     "name": sender_name,
                     "ts": chrono_timestamp_ms(),
+                    "streaming": streaming,
                 });
                 if heartbeat_tx.send(payload).is_err() {
                     break;
@@ -445,6 +431,11 @@ impl ScreenSender {
 
         loop {
             if self.closed.load(Ordering::SeqCst) {
+                let _ = out_for_reader.send(serde_json::json!({
+                    "type": "bye",
+                    "senderId": self.config.sender_id,
+                }));
+                sleep(Duration::from_millis(100)).await;
                 break;
             }
 
@@ -560,6 +551,50 @@ impl ScreenSender {
                 } else {
                     session.pending_ice.push(candidate);
                 }
+            }
+            "fs-req" => {
+                let to = payload.get("to").and_then(Value::as_str).unwrap_or_default();
+                if to != self.config.sender_id {
+                    return;
+                }
+
+                let request_id = payload.get("id").cloned().unwrap_or(Value::Null);
+                let method = payload
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned();
+                let params = payload
+                    .get("params")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Object(Default::default()));
+                let sender_id = self.config.sender_id.clone();
+                let out = out_tx.clone();
+
+                tokio::spawn(async move {
+                    let (ok, data, error) =
+                        tokio::task::spawn_blocking(move || {
+                            crate::fs_handler::handle_fs_method(&method, &params)
+                        })
+                        .await
+                        .unwrap_or((false, None, Some("Filesystem task cancelled".to_owned())));
+
+                    let mut response = serde_json::json!({
+                        "type": "fs-res",
+                        "id": request_id,
+                        "to": "receiver",
+                        "from": sender_id,
+                        "ok": ok,
+                    });
+
+                    if ok {
+                        response["data"] = data.unwrap_or(Value::Null);
+                    } else if let Some(message) = error {
+                        response["error"] = Value::String(message);
+                    }
+
+                    let _ = out.send(response);
+                });
             }
             _ => {}
         }

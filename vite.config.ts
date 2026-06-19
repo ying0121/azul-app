@@ -27,6 +27,15 @@ export default defineConfig(({ mode }) => {
       minify: true,
       sourcemap: false,
       target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/xlsx')) return 'xlsx'
+            if (id.includes('node_modules/framer-motion')) return 'motion'
+            if (id.includes('node_modules')) return 'vendor'
+          },
+        },
+      },
     },
     server: {
       port: 5173,

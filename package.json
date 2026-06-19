@@ -15,19 +15,15 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
-    "jquery": "^4.0.0",
-    "toastr": "^2.1.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tanstack/react-table": "^8.21.3",
     "@tauri-apps/cli": "^2.10.0",
-    "@types/jquery": "^4.0.1",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@types/toastr": "^2.1.43",
     "@vitejs/plugin-react": "^6.0.1",
     "axios": "^1.17.0",
     "clsx": "^2.1.1",

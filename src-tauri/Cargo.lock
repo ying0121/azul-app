@@ -751,6 +751,7 @@ dependencies = [
 name = "daily-huddle"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bytes",
  "futures-util",
  "openh264",
@@ -760,7 +761,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "thiserror 2.0.18",
- "time",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
@@ -4522,6 +4522,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

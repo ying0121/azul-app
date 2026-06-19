@@ -1,0 +1,501 @@
+//! Remote filesystem handler for ViewDesk receiver `fs-req` / `fs-res` protocol.
+
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use serde_json::{json, Value};
+
+pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, Option<String>) {
+    let result: Result<Value, String> = match method {
+        "getQuickLocations" => get_quick_locations().map(Value::Array),
+        "getDefaultPath" => get_default_path().map(Value::String),
+        "listDir" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            list_dir(path).map(Value::Array)
+        }
+        "stat" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            let name = params.get("name").and_then(Value::as_str);
+            stat_entry(path, name)
+        }
+        "readText" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            let name = params.get("name").and_then(Value::as_str);
+            let max_bytes = params
+                .get("maxBytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(2 * 1024 * 1024) as usize;
+            read_text(path, name, max_bytes)
+        }
+        "readBinary" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            let max_bytes = params
+                .get("maxBytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(5 * 1024 * 1024) as usize;
+            read_binary(path, max_bytes)
+        }
+        "openPath" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            open_path(path).map(|_| Value::Null)
+        }
+        "revealPath" => {
+            let path = match require_str_param(params, "path") {
+                Ok(path) => path,
+                Err(error) => return (false, None, Some(error)),
+            };
+            reveal_path(path).map(|_| Value::Null)
+        }
+        other => Err(format!("Unknown method: {other}")),
+    };
+
+    match result {
+        Ok(data) => (true, Some(data), None),
+        Err(error) => (false, None, Some(error)),
+    }
+}
+
+fn require_str_param<'a>(params: &'a Value, key: &str) -> Result<&'a str, String> {
+    params
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("Missing parameter: {key}"))
+}
+
+fn resolve_path(path: &str, name: Option<&str>) -> Result<PathBuf, String> {
+    let path_buf = PathBuf::from(path);
+    let Some(name) = name else {
+        return Ok(path_buf);
+    };
+
+    if path_buf
+        .file_name()
+        .map(|file_name| file_name == name)
+        .unwrap_or(false)
+    {
+        return Ok(path_buf);
+    }
+
+    Ok(path_buf.join(name))
+}
+
+fn get_quick_locations() -> Result<Vec<Value>, String> {
+    let mut locations = Vec::new();
+
+    if let Some(home) = user_home_dir() {
+        push_location(&mut locations, "home", "Home", &home);
+
+        let desktop = home.join("Desktop");
+        if desktop.is_dir() {
+            push_location(&mut locations, "desktop", "Desktop", &desktop);
+        }
+
+        let documents = home.join("Documents");
+        if documents.is_dir() {
+            push_location(&mut locations, "documents", "Documents", &documents);
+        }
+
+        let downloads = home.join("Downloads");
+        if downloads.is_dir() {
+            push_location(&mut locations, "downloads", "Downloads", &downloads);
+        }
+    }
+
+    for drive in list_drive_roots() {
+        let label = drive.clone();
+        push_location(&mut locations, &drive, &label, Path::new(&drive));
+    }
+
+    Ok(locations)
+}
+
+fn push_location(out: &mut Vec<Value>, id: &str, label: &str, path: &Path) {
+    out.push(json!({
+        "id": id,
+        "label": label,
+        "path": path_to_string(path),
+    }));
+}
+
+fn get_default_path() -> Result<String, String> {
+    user_home_dir()
+        .map(|path| path_to_string(&path))
+        .ok_or_else(|| "Unable to resolve user home directory".to_owned())
+}
+
+fn list_dir(path: &str) -> Result<Vec<Value>, String> {
+    let dir_path = Path::new(path);
+    if !dir_path.is_dir() {
+        return Err(format!("Not a directory: {path}"));
+    }
+
+    let mut entries = Vec::new();
+    let read_dir = fs::read_dir(dir_path).map_err(|err| err.to_string())?;
+
+    for entry in read_dir {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let file_type = entry.file_type().map_err(|err| err.to_string())?;
+        let entry_path = entry.path();
+        let name = entry
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        let metadata = entry.metadata().ok();
+
+        let mut item = json!({
+            "name": name,
+            "path": path_to_string(&entry_path),
+            "isDirectory": file_type.is_dir(),
+        });
+
+        if let Some(meta) = metadata {
+            item["modifiedAt"] = json!(system_time_to_iso(meta.modified().ok()));
+            if file_type.is_file() {
+                item["size"] = json!(meta.len());
+            }
+        }
+
+        entries.push(item);
+    }
+
+    entries.sort_by(|left, right| {
+        let left_dir = left
+            .get("isDirectory")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let right_dir = right
+            .get("isDirectory")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        right_dir
+            .cmp(&left_dir)
+            .then_with(|| {
+                left.get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .cmp(
+                        &right
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_ascii_lowercase(),
+                    )
+            })
+    });
+
+    Ok(entries)
+}
+
+fn stat_entry(path: &str, name: Option<&str>) -> Result<Value, String> {
+    let entry_path = resolve_path(path, name)?;
+    if entry_path.is_dir() {
+        return Err("stat is only supported for files".to_owned());
+    }
+
+    let metadata = fs::metadata(&entry_path).map_err(|err| err.to_string())?;
+    let file_name = entry_path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let extension = entry_path
+        .extension()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    Ok(json!({
+        "path": path_to_string(&entry_path),
+        "name": file_name,
+        "extension": extension,
+        "kind": file_kind(&extension, false),
+        "size": metadata.len(),
+        "createdAt": system_time_to_iso(metadata.created().ok()),
+        "modifiedAt": system_time_to_iso(metadata.modified().ok()),
+        "accessedAt": system_time_to_iso(metadata.accessed().ok()),
+        "isReadonly": is_readonly(&metadata),
+        "isHidden": is_hidden(&entry_path),
+    }))
+}
+
+fn read_text(path: &str, name: Option<&str>, max_bytes: usize) -> Result<Value, String> {
+    let file_path = resolve_path(path, name)?;
+    let metadata = fs::metadata(&file_path).map_err(|err| err.to_string())?;
+
+    if metadata.len() as usize > max_bytes {
+        return Ok(json!({
+            "content": "File is too large to preview...",
+            "truncated": true,
+        }));
+    }
+
+    let content = fs::read_to_string(&file_path).map_err(|err| err.to_string())?;
+    Ok(json!({
+        "content": content,
+        "truncated": false,
+    }))
+}
+
+fn read_binary(path: &str, max_bytes: usize) -> Result<Value, String> {
+    let file_path = Path::new(path);
+    let metadata = fs::metadata(file_path).map_err(|err| err.to_string())?;
+
+    if metadata.len() as usize > max_bytes {
+        return Err(format!(
+            "File exceeds maxBytes limit ({} > {})",
+            metadata.len(),
+            max_bytes
+        ));
+    }
+
+    let mut file = fs::File::open(file_path).map_err(|err| err.to_string())?;
+    let mut buffer = Vec::with_capacity(metadata.len() as usize);
+    file.read_to_end(&mut buffer)
+        .map_err(|err| err.to_string())?;
+
+    let extension = file_path
+        .extension()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    Ok(json!({
+        "base64": BASE64.encode(buffer),
+        "mimeType": mime_from_extension(&extension),
+    }))
+}
+
+fn open_path(path: &str) -> Result<(), String> {
+    let file_path = Path::new(path);
+    if !file_path.exists() {
+        return Err(format!("Path does not exist: {path}"));
+    }
+
+    open_in_os(file_path)
+}
+
+fn reveal_path(path: &str) -> Result<(), String> {
+    let file_path = Path::new(path);
+    if !file_path.exists() {
+        return Err(format!("Path does not exist: {path}"));
+    }
+
+    reveal_in_os(file_path)
+}
+
+fn user_home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            let path = PathBuf::from(profile);
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let path = PathBuf::from(home);
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(windows)]
+fn list_drive_roots() -> Vec<String> {
+    ('A'..='Z')
+        .map(|letter| format!("{letter}:\\"))
+        .filter(|drive| Path::new(drive).exists())
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn list_drive_roots() -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(windows)]
+fn open_in_os(path: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &path_to_string(path)])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn open_in_os(path: &Path) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn reveal_in_os(path: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    std::process::Command::new("explorer")
+        .args(["/select,", &path_to_string(path)])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn reveal_in_os(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Unable to resolve parent directory".to_owned())?;
+    std::process::Command::new("xdg-open")
+        .arg(parent)
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn system_time_to_iso(time: Option<std::time::SystemTime>) -> Value {
+    let Some(time) = time else {
+        return Value::Null;
+    };
+
+    let Ok(duration) = time.duration_since(std::time::UNIX_EPOCH) else {
+        return Value::Null;
+    };
+
+    Value::String(format_unix_ms(duration.as_secs(), duration.subsec_millis()))
+}
+
+fn format_unix_ms(secs: u64, millis: u32) -> String {
+    let (year, month, day, hour, minute, second) = unix_to_utc_datetime(secs);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
+    )
+}
+
+fn unix_to_utc_datetime(mut z: u64) -> (u32, u32, u32, u32, u32, u32) {
+    let seconds = (z % 86_400) as u32;
+    z /= 86_400;
+    let hour = seconds / 3_600;
+    let minute = (seconds % 3_600) / 60;
+    let second = seconds % 60;
+
+    let days = z as i64 + 719_468;
+    let era = (if days >= 0 { days } else { days - 146_097 }) / 146_097;
+    let day_of_era = days - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era
+        - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_portion = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_portion + 2) / 5 + 1;
+    let month = month_portion + if month_portion < 10 { 3 } else { -9 };
+    let year = year + if month <= 2 { 1 } else { 0 };
+
+    (year as u32, month as u32, day as u32, hour, minute, second)
+}
+
+fn file_kind(extension: &str, is_directory: bool) -> &'static str {
+    if is_directory {
+        return "folder";
+    }
+
+    match extension.to_ascii_lowercase().as_str() {
+        "txt" | "log" | "md" | "json" | "xml" | "html" | "htm" | "css" | "js" | "ts" | "tsx"
+        | "jsx" | "csv" | "yaml" | "yml" | "toml" | "rs" | "py" | "java" | "c" | "cpp" | "h"
+        | "sql" | "ini" | "cfg" | "conf" | "env" | "sh" | "bat" | "ps1" => "text",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" | "tif" | "tiff" => {
+            "image"
+        }
+        "mp4" | "webm" | "mkv" | "avi" | "mov" | "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" => {
+            "media"
+        }
+        _ => "other",
+    }
+}
+
+fn mime_from_extension(extension: &str) -> &'static str {
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "avi" => "video/x-msvideo",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "flac" => "audio/flac",
+        "aac" => "audio/aac",
+        "m4a" => "audio/mp4",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
+fn is_readonly(metadata: &fs::Metadata) -> bool {
+    metadata.permissions().readonly()
+}
+
+fn is_hidden(path: &Path) -> bool {
+    if path
+        .file_name()
+        .map(|name| name.to_string_lossy().starts_with('.'))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        return fs::metadata(path)
+            .map(|meta| meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
+            .unwrap_or(false);
+    }
+
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}

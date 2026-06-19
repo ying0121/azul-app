@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import { formatUsDate } from '@/lib/formatDate'
 import { getRowApptDate, getRowDos, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
@@ -43,7 +42,8 @@ function rowToCells(row: PatientRow): string[] {
   ]
 }
 
-export function exportPatientsToExcel(rows: PatientRow[], filename: string): void {
+export async function exportPatientsToExcel(rows: PatientRow[], filename: string): Promise<void> {
+  const XLSX = await import('xlsx')
   const worksheet = XLSX.utils.aoa_to_sheet([HEADERS, ...rows.map(rowToCells)])
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Patients')

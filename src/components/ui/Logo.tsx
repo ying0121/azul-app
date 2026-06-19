@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import clsx from 'clsx'
 
 interface LogoProps {
@@ -21,12 +20,7 @@ export function Logo({ size = 'md', showText = true, className }: LogoProps) {
   const useFullLogo = size === 'lg' || !showText
 
   return (
-    <motion.div
-      className={clsx('logo', `logo--${size}`, className)}
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-    >
+    <div className={clsx('logo', 'logo--enter', `logo--${size}`, className)}>
       <img
         src={useFullLogo ? LOGO_SRC : FAVICON_SRC}
         alt="Precision Quality"
@@ -43,6 +37,6 @@ export function Logo({ size = 'md', showText = true, className }: LogoProps) {
           <span className="logo__subtitle">Quality Care Dashboard</span>
         </div>
       )}
-    </motion.div>
+    </div>
   )
 }

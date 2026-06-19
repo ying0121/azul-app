@@ -254,8 +254,9 @@ export function DashboardPage() {
     }
 
     const filename = `daily-huddle-${getClinicTodayDateString()}.xlsx`
-    exportPatientsToExcel(rows, filename)
-    showAlert('success', 'Export Complete', `Exported ${rows.length} record(s) to ${filename}.`)
+    void exportPatientsToExcel(rows, filename).then(() => {
+      showAlert('success', 'Export Complete', `Exported ${rows.length} record(s) to ${filename}.`)
+    })
   }
 
   const handleOpenDailyEmailPreview = async () => {

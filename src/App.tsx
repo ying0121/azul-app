@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { ToastHost } from '@/components/ui/ToastHost'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { useDesktopRestrictions } from '@/hooks/useDesktopRestrictions'
 import { isDesktopApp } from '@/lib/tauri'
@@ -60,6 +61,7 @@ export default function App() {
             <AppRoutes />
           </div>
         </div>
+        <ToastHost />
       </div>
     </HashRouter>
   )
