@@ -19,3 +19,13 @@ serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.11.2", features = [] }
 # Pin below 0.3.48 — 0.3.48 conflicts with cookie/tauri-utils blanket From impls (E0119).
 time = "=0.3.47"
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-util = "0.7"
+futures-util = "0.3"
+rand = "0.8"
+thiserror = "2"
+bytes = "1"
+webrtc = "0.17"
+xcap = "0.9"
+openh264 = { version = "0.9", features = ["source"] }
