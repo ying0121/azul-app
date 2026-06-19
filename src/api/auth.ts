@@ -79,11 +79,15 @@ export async function checkAuthStatus(): Promise<AuthStatusResponse> {
   const token = getToken()
   const clinic = getClinic()
 
-  if (!token || clinic == null) {
-    return { authenticated: false }
+  if (token && clinic != null) {
+    return { authenticated: true, clinic }
   }
 
-  return { authenticated: true, clinic }
+  return {
+    authenticated: false,
+    expired: true,
+    message: 'Your session has expired. Please sign in again.',
+  }
 }
 
 export async function logout(): Promise<void> {

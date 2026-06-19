@@ -4,8 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { getClinicDisplayName } from '@/types/auth'
 import { WindowControls } from '@/components/layout/WindowControls'
 
-const FAVICON_SRC = '/favicon.ico'
-const APP_NAME = 'Daily Huddle'
+const APP_NAME = 'Daily Team Huddle'
 
 function buildWindowTitle(
   clinic: ReturnType<typeof useAuthStore.getState>['clinic'],
@@ -44,7 +43,6 @@ export function TitleBar() {
         data-tauri-drag-region
         onDoubleClick={handleDoubleClick}
       >
-        <img src={FAVICON_SRC} alt="" className="titlebar__icon" aria-hidden />
         <span className="titlebar__title">{title}</span>
       </div>
       <WindowControls />

@@ -4,6 +4,9 @@ import {
   getClinicYear,
 } from '@/lib/clinicDate'
 
+export const ALL_INSURANCES_ID = '0'
+export const ALL_QUALITY_PROGRAM_ID = '0'
+
 export interface InsuranceOption {
   ins_id: string
   ins_name: string
@@ -12,6 +15,16 @@ export interface InsuranceOption {
 export interface QualityProgramOption {
   qp_id: string
   qp_name: string
+}
+
+export const ALL_INSURANCES_OPTION: InsuranceOption = {
+  ins_id: ALL_INSURANCES_ID,
+  ins_name: 'All Insurances',
+}
+
+export const ALL_QUALITY_PROGRAM_OPTION: QualityProgramOption = {
+  qp_id: ALL_QUALITY_PROGRAM_ID,
+  qp_name: 'All Quality Program',
 }
 
 export type ApptFilterPreset = 'one_day' | 'next_7' | 'next_15' | 'next_30' | 'custom'

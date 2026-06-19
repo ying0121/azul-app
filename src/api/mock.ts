@@ -49,6 +49,10 @@ export const mockQualityPrograms: Record<
   string,
   { qp_id: string; qp_name: string }[]
 > = {
+  '0': [
+    { qp_id: 'QP-01', qp_name: 'Quality Program Alpha' },
+    { qp_id: 'QP-02', qp_name: 'Quality Program Beta' },
+  ],
   'INS-AET': [{ qp_id: 'QP-01', qp_name: 'Quality Program Alpha' }],
   'INS-UHC': [{ qp_id: 'QP-02', qp_name: 'Quality Program Beta' }],
 }

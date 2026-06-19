@@ -23,12 +23,12 @@ function copyIfExists(src, dest) {
 fs.mkdirSync(outDir, { recursive: true })
 
 copyIfExists(
-  path.join(bundleDir, 'nsis', 'Daily Huddle_0.1.0_x64-setup.exe'),
-  path.join(outDir, 'Daily Huddle Setup 0.1.0.exe'),
+  path.join(bundleDir, 'nsis', 'Daily Team Huddle_0.1.0_x64-setup.exe'),
+  path.join(outDir, 'Daily Team Huddle Setup 0.1.0.exe'),
 )
 copyIfExists(
-  path.join(bundleDir, 'msi', 'Daily Huddle_0.1.0_x64_en-US.msi'),
-  path.join(outDir, 'Daily Huddle 0.1.0.msi'),
+  path.join(bundleDir, 'msi', 'Daily Team Huddle_0.1.0_x64_en-US.msi'),
+  path.join(outDir, 'Daily Team Huddle 0.1.0.msi'),
 )
 
 console.log(`Installers copied to ${path.relative(root, outDir)}`)

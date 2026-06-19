@@ -81,7 +81,7 @@ function buildTableRows(
 }
 
 export function buildDailyVisitEmailSubject(context: DailyVisitEmailContext): string {
-  return `Daily Huddle Visit Report — ${context.clinicName} — ${context.reportDate}`
+  return `Daily Team Huddle Visit Report — ${context.clinicName} — ${context.reportDate}`
 }
 
 export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): string {
@@ -102,7 +102,7 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Daily Huddle Visit Report</title>
+    <title>Daily Team Huddle Visit Report</title>
   </head>
   <body style="margin:0;padding:0;background-color:#eef2f7;font-family:Segoe UI, Arial, sans-serif;color:#0f172a;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#eef2f7;padding:24px 12px;">
@@ -115,7 +115,7 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
                   <tr>
                     <td>
                       <div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;opacity:0.88;margin-bottom:8px;">
-                        Daily Huddle
+                        Daily Team Huddle
                       </div>
                       <div style="font-size:28px;line-height:1.2;font-weight:700;margin-bottom:8px;">
                         Today's Visit Report
@@ -211,7 +211,7 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
 
 export function buildDailyVisitEmailText(context: DailyVisitEmailContext): string {
   const lines = [
-    `Daily Huddle Visit Report`,
+    `Daily Team Huddle Visit Report`,
     `${context.clinicName} — ${context.reportDate}`,
     `Insurance: ${context.insuranceName || '—'}`,
     `Quality Program: ${context.qualityProgramName || '—'}`,

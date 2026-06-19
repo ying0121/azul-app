@@ -17,6 +17,10 @@ import { useAuthStore } from '@/stores/authStore'
 import { useStatusColorStore } from '@/stores/statusColorStore'
 import { getClinicDisplayName, getClinicId } from '@/types/auth'
 import {
+  ALL_INSURANCES_ID,
+  ALL_INSURANCES_OPTION,
+  ALL_QUALITY_PROGRAM_ID,
+  ALL_QUALITY_PROGRAM_OPTION,
   DEFAULT_APPT_FILTER,
   DEFAULT_SOURCE_FILTER,
   getCurrentYear,
@@ -44,8 +48,8 @@ export function DashboardPage() {
   const [patients, setPatients] = useState<PatientRow[]>([])
   const [insuranceOptions, setInsuranceOptions] = useState<InsuranceOption[]>([])
   const [qualityProgramOptions, setQualityProgramOptions] = useState<QualityProgramOption[]>([])
-  const [selectedInsuranceId, setSelectedInsuranceId] = useState('')
-  const [selectedQualityProgramId, setSelectedQualityProgramId] = useState('')
+  const [selectedInsuranceId, setSelectedInsuranceId] = useState(ALL_INSURANCES_ID)
+  const [selectedQualityProgramId, setSelectedQualityProgramId] = useState(ALL_QUALITY_PROGRAM_ID)
   const [search, setSearch] = useState('')
   const [appliedApptFilter, setAppliedApptFilter] = useState<ApptFilterState>(DEFAULT_APPT_FILTER)
   const [draftApptFilter, setDraftApptFilter] = useState<ApptFilterState>(DEFAULT_APPT_FILTER)
@@ -125,7 +129,7 @@ export function DashboardPage() {
     setIsInsuranceLoading(true)
     try {
       const options = await fetchInsuranceList(activeClinicId)
-      setInsuranceOptions(options)
+      setInsuranceOptions([ALL_INSURANCES_OPTION, ...options])
     } catch (err: unknown) {
       showAlertRef.current(
         'error',
@@ -147,7 +151,7 @@ export function DashboardPage() {
       setIsQualityProgramLoading(true)
       try {
         const options = await fetchQualityPrograms(activeClinicId, insId)
-        setQualityProgramOptions(options)
+        setQualityProgramOptions([ALL_QUALITY_PROGRAM_OPTION, ...options])
         loadedQualityForInsurance.current = cacheKey
       } catch (err: unknown) {
         showAlertRef.current(
@@ -156,7 +160,7 @@ export function DashboardPage() {
           (err as { friendlyMessage?: string }).friendlyMessage ??
             'Unable to load quality programs.',
         )
-        setQualityProgramOptions([])
+        setQualityProgramOptions([ALL_QUALITY_PROGRAM_OPTION])
       } finally {
         setIsQualityProgramLoading(false)
       }
@@ -176,8 +180,8 @@ export function DashboardPage() {
     loadedQualityForInsurance.current = null
     hasLoadedPatientsOnce.current = false
 
-    setSelectedInsuranceId('')
-    setSelectedQualityProgramId('')
+    setSelectedInsuranceId(ALL_INSURANCES_ID)
+    setSelectedQualityProgramId(ALL_QUALITY_PROGRAM_ID)
     setInsuranceOptions([])
     setQualityProgramOptions([])
     setPatients([])
@@ -198,14 +202,14 @@ export function DashboardPage() {
     if (clinicId == null) return
 
     if (!selectedInsuranceId) {
-      setQualityProgramOptions([])
-      setSelectedQualityProgramId('')
+      setQualityProgramOptions([ALL_QUALITY_PROGRAM_OPTION])
+      setSelectedQualityProgramId(ALL_QUALITY_PROGRAM_ID)
       loadedQualityForInsurance.current = null
       return
     }
 
-    setQualityProgramOptions([])
-    setSelectedQualityProgramId('')
+    setQualityProgramOptions([ALL_QUALITY_PROGRAM_OPTION])
+    setSelectedQualityProgramId(ALL_QUALITY_PROGRAM_ID)
     loadedQualityForInsurance.current = null
     void loadQualityProgramOptions(clinicId, selectedInsuranceId)
   }, [clinicId, selectedInsuranceId, loadQualityProgramOptions])

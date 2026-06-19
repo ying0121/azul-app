@@ -17,7 +17,7 @@ if (import.meta.env.DEV) {
   console.info(`[api] ${getApiConfigLabel()}`)
 }
 
-/** Apply token to session storage and every axios request (Authorization: <token>) */
+/** Apply token to local storage and every axios request (Authorization: <token>) */
 export function setAuthToken(token: string | null) {
   if (token) {
     const value = token.trim()

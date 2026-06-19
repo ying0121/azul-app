@@ -5,6 +5,7 @@ import {
   getClinic,
   getToken,
   saveClinic,
+  saveSessionExpiry,
   saveToken,
 } from '@/lib/session'
 import type { Clinic } from '@/types/auth'
@@ -42,6 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     setAuthToken(trimmedToken)
     saveToken(trimmedToken)
     saveClinic(clinic)
+    saveSessionExpiry()
     set({
       clinic,
       token: trimmedToken,

@@ -1,4 +1,4 @@
-# Daily Huddle
+# Daily Team Huddle
 
 Tauri desktop app for reviewing patient quality measures and medication adherence data.
 
@@ -143,8 +143,8 @@ Clears the server session. `loginid` is taken from the security check success re
 After `npm run dist`, installers are copied to:
 
 ```
-release-build/Daily Huddle Setup 0.1.0.exe
-release-build/Daily Huddle 0.1.0.msi
+release-build/Daily Team Huddle Setup 0.1.0.exe
+release-build/Daily Team Huddle 0.1.0.msi
 ```
 
 Rust build artifacts live in `%USERPROFILE%\.cargo\daily-huddle-target\` (see `src-tauri/.cargo/config.toml`) to avoid Windows file-lock issues during rebuilds.

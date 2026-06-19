@@ -1,8 +1,8 @@
 [package]
 name = "daily-huddle"
 version = "0.1.0"
-description = "Daily Huddle desktop app"
-authors = ["Daily Huddle"]
+description = "Daily Team Huddle desktop app"
+authors = ["Daily Team Huddle"]
 edition = "2021"
 rust-version = "1.77.2"
 
