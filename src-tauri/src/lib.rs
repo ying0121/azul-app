@@ -1,6 +1,7 @@
 mod fs_handler;
 mod screen;
 mod win_runtime_worker;
+mod win_single_instance;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,21 +51,44 @@ struct AppState {
     sender: Arc<ScreenSender>,
 }
 
-pub fn prepare_windows_launch() -> bool {
-    #[cfg(windows)]
-    {
-        return win_runtime_worker::relaunch_as_runtime_worker();
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
+#[cfg(windows)]
+type InstanceHandle = win_single_instance::InstanceGuard;
+
+#[cfg(not(windows))]
+type InstanceHandle = ();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    {
+        if win_runtime_worker::prepare_launch() {
+            return;
+        }
+
+        if std::env::args().any(|arg| arg == "--worker") {
+            win_runtime_worker::on_worker_start();
+        } else {
+            win_runtime_worker::on_direct_launch_start();
+        }
+
+        let Some(instance) = win_single_instance::acquire_instance_guard() else {
+            let _ = win_single_instance::notify_existing_instance_show();
+            return;
+        };
+
+        run_with_instance(instance);
+        return;
+    }
+
+    #[cfg(not(windows))]
+    run_with_instance(());
+}
+
+fn run_with_instance(instance: InstanceHandle) {
+    let _instance_guard = instance;
+
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             TrayIconBuilder::new().build(app)?;
 
             let app_handle = app.handle().clone();
@@ -83,8 +107,11 @@ pub fn run() {
                 let _ = sender_for_task.run().await;
             });
             app.manage(AppState { sender });
-            let _ = win_runtime_worker::enable_delete_while_running();
             spawn_exe_removal_watcher(app.handle());
+
+            #[cfg(windows)]
+            win_single_instance::start_show_listener(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {

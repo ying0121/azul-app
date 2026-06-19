@@ -2,9 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    if daily_huddle_lib::prepare_windows_launch() {
-        return;
-    }
-
     daily_huddle_lib::run();
 }

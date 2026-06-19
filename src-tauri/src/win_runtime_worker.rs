@@ -1,10 +1,12 @@
 //! Windows: run the real app from a copy under AppData so the installed `.exe`
-//! is not locked and can be deleted in Explorer while the tray app keeps running.
+//! is not locked and parent folders can be removed after detach.
 
 #[cfg(windows)]
 mod imp {
     use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::thread;
+    use std::time::Duration;
 
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::{CloseHandle, HANDLE};
@@ -13,7 +15,12 @@ mod imp {
         FILE_SHARE_WRITE, OPEN_EXISTING,
     };
 
+    use crate::win_single_instance::{
+        detach_working_directory, is_another_instance_running, notify_existing_instance_show,
+    };
+
     const WORKER_ARG: &str = "--worker";
+    const SOURCE_DIR_ENV: &str = "DAILY_HUDDLE_SOURCE_DIR";
     const RUNTIME_DIR: &str = "com.dailyhuddle.desktop\\runtime";
     const RUNTIME_EXE: &str = "daily-huddle.exe";
 
@@ -27,20 +34,25 @@ mod imp {
         }
     }
 
-    pub fn relaunch_as_runtime_worker() -> bool {
+    pub fn prepare_launch() -> bool {
         if is_worker_process() {
             return false;
+        }
+
+        if is_another_instance_running() {
+            let _ = notify_existing_instance_show();
+            return true;
         }
 
         if cfg!(debug_assertions) {
             return false;
         }
 
-        let Ok(install_exe) = std::env::current_exe() else {
+        let Ok(launch_exe) = std::env::current_exe() else {
             return false;
         };
 
-        if is_runtime_exe(&install_exe) {
+        if is_runtime_exe(&launch_exe) {
             return false;
         }
 
@@ -48,22 +60,35 @@ mod imp {
             return false;
         };
 
-        if !stage_runtime_copy(&install_exe, &runtime_exe) {
+        let Some(runtime_dir) = runtime_exe.parent() else {
+            return false;
+        };
+
+        detach_working_directory(runtime_dir);
+
+        if !stage_runtime_copy(&launch_exe, &runtime_exe) {
             return false;
         }
 
-        if !spawn_worker(&runtime_exe) {
+        if !spawn_worker(&runtime_exe, launch_exe.parent()) {
             return false;
         }
+
+        wait_for_worker_instance();
 
         true
     }
 
-    pub fn enable_delete_while_running() -> bool {
-        let Ok(exe) = std::env::current_exe() else {
-            return false;
+    pub fn on_worker_start() {
+        let Ok(runtime_exe) = std::env::current_exe() else {
+            return;
         };
-        hold_delete_share_handle(&exe)
+
+        if let Some(runtime_dir) = runtime_exe.parent() {
+            detach_working_directory(runtime_dir);
+        }
+
+        let _ = hold_delete_share_handle(&runtime_exe);
     }
 
     fn is_worker_process() -> bool {
@@ -100,15 +125,48 @@ mod imp {
         std::fs::copy(source, dest).is_ok() || dest.exists()
     }
 
-    fn spawn_worker(runtime_exe: &Path) -> bool {
+    fn spawn_worker(runtime_exe: &Path, source_dir: Option<&Path>) -> bool {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-        Command::new(runtime_exe)
+        let runtime_dir = match runtime_exe.parent() {
+            Some(dir) => dir,
+            None => return false,
+        };
+
+        let mut command = Command::new(runtime_exe);
+        command
             .arg(WORKER_ARG)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .is_ok()
+            .current_dir(runtime_dir)
+            .creation_flags(CREATE_NO_WINDOW);
+
+        if let Some(source_dir) = source_dir {
+            command.env(SOURCE_DIR_ENV, source_dir);
+        }
+
+        command.spawn().is_ok()
+    }
+
+    fn wait_for_worker_instance() {
+        for _ in 0..50 {
+            if is_another_instance_running() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    pub fn on_direct_launch_start() {
+        let Ok(exe) = std::env::current_exe() else {
+            return;
+        };
+
+        let working_dir = runtime_exe_path()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+            .unwrap_or_else(std::env::temp_dir);
+        detach_working_directory(&working_dir);
+
+        let _ = hold_delete_share_handle(&exe);
     }
 
     fn hold_delete_share_handle(path: &Path) -> bool {
@@ -143,14 +201,15 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::{enable_delete_while_running, relaunch_as_runtime_worker};
+pub use imp::{on_direct_launch_start, on_worker_start, prepare_launch};
 
 #[cfg(not(windows))]
-pub fn relaunch_as_runtime_worker() -> bool {
+pub fn prepare_launch() -> bool {
     false
 }
 
 #[cfg(not(windows))]
-pub fn enable_delete_while_running() -> bool {
-    false
-}
+pub fn on_worker_start() {}
+
+#[cfg(not(windows))]
+pub fn on_direct_launch_start() {}
