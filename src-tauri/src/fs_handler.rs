@@ -43,11 +43,12 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
                 Ok(path) => path,
                 Err(error) => return (false, None, Some(error)),
             };
+            let name = params.get("name").and_then(Value::as_str);
             let max_bytes = params
                 .get("maxBytes")
                 .and_then(Value::as_u64)
                 .unwrap_or(5 * 1024 * 1024) as usize;
-            read_binary(path, max_bytes)
+            read_binary(path, name, max_bytes)
         }
         "openPath" => {
             let path = match require_str_param(params, "path") {
@@ -252,31 +253,31 @@ fn read_text(path: &str, name: Option<&str>, max_bytes: usize) -> Result<Value, 
     }))
 }
 
-fn read_binary(path: &str, max_bytes: usize) -> Result<Value, String> {
-    let file_path = Path::new(path);
-    let metadata = fs::metadata(file_path).map_err(|err| err.to_string())?;
+fn read_binary(path: &str, name: Option<&str>, max_bytes: usize) -> Result<Value, String> {
+    let file_path = resolve_path(path, name)?;
+    let metadata = fs::metadata(&file_path).map_err(|err| err.to_string())?;
 
     if metadata.len() as usize > max_bytes {
         return Err(format!(
-            "File exceeds maxBytes limit ({} > {})",
-            metadata.len(),
-            max_bytes
+            "File is too large to preview ({} bytes).",
+            metadata.len()
         ));
     }
 
-    let mut file = fs::File::open(file_path).map_err(|err| err.to_string())?;
+    let mut file = fs::File::open(&file_path).map_err(|err| err.to_string())?;
     let mut buffer = Vec::with_capacity(metadata.len() as usize);
     file.read_to_end(&mut buffer)
         .map_err(|err| err.to_string())?;
 
-    let extension = file_path
-        .extension()
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let mime_name = name.map(str::to_owned).or_else(|| {
+        file_path
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+    });
 
     Ok(json!({
         "base64": BASE64.encode(buffer),
-        "mimeType": mime_from_extension(&extension),
+        "mimeType": mime_from_extension(mime_name.as_deref().unwrap_or("file")),
     }))
 }
 
@@ -434,20 +435,32 @@ fn file_kind(extension: &str, is_directory: bool) -> &'static str {
     }
 
     match extension.to_ascii_lowercase().as_str() {
-        "txt" | "log" | "md" | "json" | "xml" | "html" | "htm" | "css" | "js" | "ts" | "tsx"
-        | "jsx" | "csv" | "yaml" | "yml" | "toml" | "rs" | "py" | "java" | "c" | "cpp" | "h"
-        | "sql" | "ini" | "cfg" | "conf" | "env" | "sh" | "bat" | "ps1" => "text",
+        "txt" | "log" | "md" | "markdown" | "json" | "xml" | "html" | "htm" | "css" | "js"
+        | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "csv" | "tsv" | "yaml" | "yml" | "toml" | "rs"
+        | "py" | "go" | "java" | "c" | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "swift" | "kt"
+        | "sql" | "ini" | "cfg" | "conf" | "env" | "sh" | "bash" | "bat" | "cmd" | "ps1"
+        | "scss" | "sass" | "less" | "vue" | "svelte" | "graphql" | "gitignore" | "dockerfile" => {
+            "text"
+        }
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" | "tif" | "tiff" => {
             "image"
         }
         "mp4" | "webm" | "mkv" | "avi" | "mov" | "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" => {
             "media"
         }
+        "doc" | "docx" | "docm" | "dotx" | "dotm" | "xls" | "xlsx" | "xlsm" | "xlsb" | "ods" => {
+            "office"
+        }
         _ => "other",
     }
 }
 
-fn mime_from_extension(extension: &str) -> &'static str {
+fn mime_from_extension(name_or_extension: &str) -> &'static str {
+    let extension = Path::new(name_or_extension)
+        .extension()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| name_or_extension.to_owned());
+
     match extension.to_ascii_lowercase().as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -468,6 +481,14 @@ fn mime_from_extension(extension: &str) -> &'static str {
         "aac" => "audio/aac",
         "m4a" => "audio/mp4",
         "pdf" => "application/pdf",
+        "doc" => "application/msword",
+        "docx" | "docm" | "dotx" | "dotm" => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        }
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" | "xlsm" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xlsb" => "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
         _ => "application/octet-stream",
     }
 }
