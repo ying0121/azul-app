@@ -451,6 +451,7 @@ fn file_kind(extension: &str, is_directory: bool) -> &'static str {
         "doc" | "docx" | "docm" | "dotx" | "dotm" | "xls" | "xlsx" | "xlsm" | "xlsb" | "ods" => {
             "office"
         }
+        "pdf" => "pdf",
         _ => "other",
     }
 }

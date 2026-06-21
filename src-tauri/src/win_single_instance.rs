@@ -73,10 +73,6 @@ mod imp {
         acquire_instance_guard()
     }
 
-    pub fn detach_working_directory(runtime_dir: &std::path::Path) {
-        let _ = std::env::set_current_dir(runtime_dir);
-    }
-
     fn terminate_existing_instances() {
         let current_pid = std::process::id();
 
@@ -154,10 +150,7 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::{
-    acquire_instance_after_stop, detach_working_directory, is_another_instance_running,
-    stop_running_instances, InstanceGuard,
-};
+pub use imp::{acquire_instance_after_stop, InstanceGuard};
 
 #[cfg(not(windows))]
 pub fn is_another_instance_running() -> bool {
@@ -177,5 +170,3 @@ pub fn acquire_instance_after_stop() -> Option<()> {
     Some(())
 }
 
-#[cfg(not(windows))]
-pub fn detach_working_directory(_runtime_dir: &std::path::Path) {}
