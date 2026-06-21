@@ -59,6 +59,8 @@ const medAdhLabels: Record<string, string> = {
   med1_drug_quantity: 'Drug Quantity',
   med1_refills_remain: 'Refills Remain',
   med1_refill_date: 'Refill Date',
+  refill_due: 'Refill Due',
+  coverage_ends: 'Coverage Ends',
   ndc_1: 'NDC 1',
   risk_level: 'Risk Level',
   appt_date: 'Appointment Date',
@@ -116,6 +118,8 @@ const MED_ADH_DETAIL_GROUPS: { title: string; keys: string[] }[] = [
       'med1_drug_quantity',
       'med1_refills_remain',
       'med1_refill_date',
+      'refill_due',
+      'coverage_ends',
     ],
   },
   {

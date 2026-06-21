@@ -1,6 +1,7 @@
 import type { PatientRow } from '@/types/patient'
 import { isHedisRow } from '@/types/patient'
 import { isNullishValue } from '@/lib/formatDate'
+import { getRowCoverageEnds, getRowRefillDue } from '@/lib/patientRowValues'
 import { matchesSourceFilter, type SourceFilterState } from '@/types/filters'
 
 export function matchesPatientSearch(row: PatientRow, search: string): boolean {
@@ -21,6 +22,8 @@ export function matchesPatientSearch(row: PatientRow, search: string): boolean {
     row.details.appt_date,
     isHedisRow(row) ? row.details.value1 : '',
     isHedisRow(row) ? row.details.value2 : '',
+    getRowRefillDue(row),
+    getRowCoverageEnds(row),
     row.pt_phone,
     row.source,
     isNullishValue(row.dos) ? '' : row.dos,

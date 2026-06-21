@@ -1,21 +1,22 @@
-//! One running worker. A second launch signals the running instance to show its window.
+//! One running instance. A new launch stops the previous process first.
 
 #[cfg(windows)]
 mod imp {
+    use std::process::Command;
     use std::thread;
     use std::time::Duration;
 
-    use tauri::{AppHandle, Manager};
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
+    use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND};
     use windows::Win32::System::Threading::{
-        CreateEventW, CreateMutexW, OpenEventW, OpenMutexW, SetEvent, WaitForSingleObject,
-        INFINITE, SYNCHRONIZATION_ACCESS_RIGHTS,
+        CreateMutexW, OpenMutexW, OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+        SYNCHRONIZATION_ACCESS_RIGHTS,
     };
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
 
     const MUTEX_NAME: &str = "Local\\com.dailyhuddle.desktop.instance";
-    const SHOW_EVENT_NAME: &str = "Local\\com.dailyhuddle.desktop.show";
-    const EVENT_MODIFY_STATE: u32 = 0x0002;
+    const WINDOW_TITLE: &str = "Daily Team Huddle";
+    const APP_IMAGE_NAMES: [&str; 2] = ["daily-huddle.exe", "Daily Team Huddle.exe"];
 
     pub struct InstanceGuard(pub HANDLE);
 
@@ -26,8 +27,6 @@ mod imp {
             }
         }
     }
-
-    struct LeakedEvent(HANDLE);
 
     pub fn is_another_instance_running() -> bool {
         unsafe {
@@ -45,14 +44,9 @@ mod imp {
         }
     }
 
-    pub fn notify_existing_instance_show() -> bool {
-        for _ in 0..30 {
-            if signal_show_event() {
-                return true;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        false
+    pub fn stop_running_instances() {
+        terminate_existing_instances();
+        wait_for_instance_exit();
     }
 
     pub fn acquire_instance_guard() -> Option<InstanceGuard> {
@@ -72,71 +66,86 @@ mod imp {
         }
     }
 
+    pub fn acquire_instance_after_stop() -> Option<InstanceGuard> {
+        if is_another_instance_running() {
+            stop_running_instances();
+        }
+        acquire_instance_guard()
+    }
+
     pub fn detach_working_directory(runtime_dir: &std::path::Path) {
         let _ = std::env::set_current_dir(runtime_dir);
     }
 
-    pub fn start_show_listener(app: AppHandle) {
-        let Some(event) = (unsafe { create_show_event() }) else {
-            return;
-        };
+    fn terminate_existing_instances() {
+        let current_pid = std::process::id();
 
-        let _ = Box::leak(Box::new(LeakedEvent(event)));
-        let event_raw = event.0 as isize;
-
-        thread::spawn(move || {
-            let event = HANDLE(event_raw as *mut _);
-            loop {
-                unsafe {
-                    let waited = WaitForSingleObject(event, INFINITE);
-                    if waited != WAIT_OBJECT_0 {
-                        continue;
-                    }
-                }
-
-                let app = app.clone();
-                let _ = app.clone().run_on_main_thread(move || {
-                    show_main_window(&app);
-                });
+        if let Some(pid) = find_main_window_process_id() {
+            if pid != current_pid {
+                force_kill_process(pid);
             }
-        });
+        }
+
+        for image in APP_IMAGE_NAMES {
+            kill_processes_by_image(image, current_pid);
+        }
     }
 
-    fn show_main_window(app: &AppHandle) {
-        let Some(window) = app.get_webview_window("main") else {
-            return;
-        };
+    fn wait_for_instance_exit() {
+        for _ in 0..50 {
+            if !is_another_instance_running() {
+                thread::sleep(Duration::from_millis(200));
+                return;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
 
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        terminate_existing_instances();
+        thread::sleep(Duration::from_millis(300));
     }
 
-    fn signal_show_event() -> bool {
+    fn find_main_window_process_id() -> Option<u32> {
         unsafe {
-            let name = wide(SHOW_EVENT_NAME);
-            let Ok(event) = OpenEventW(
-                SYNCHRONIZATION_ACCESS_RIGHTS(0x0010_0000 | EVENT_MODIFY_STATE),
-                false,
-                PCWSTR(name.as_ptr()),
-            ) else {
-                return false;
+            let title = wide(WINDOW_TITLE);
+            let Ok(hwnd) = FindWindowW(None, PCWSTR(title.as_ptr())) else {
+                return None;
             };
+            if hwnd == HWND::default() {
+                return None;
+            }
 
-            let signaled = SetEvent(event).is_ok();
-            let _ = CloseHandle(event);
-            signaled
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid == 0 { None } else { Some(pid) }
         }
     }
 
-    unsafe fn create_show_event() -> Option<HANDLE> {
-        let name = wide(SHOW_EVENT_NAME);
-        let handle = CreateEventW(None, false, false, PCWSTR(name.as_ptr())).ok()?;
-        if handle.is_invalid() {
-            None
-        } else {
-            Some(handle)
+    fn force_kill_process(pid: u32) {
+        unsafe {
+            let Ok(handle) = OpenProcess(PROCESS_TERMINATE, false, pid) else {
+                return;
+            };
+            if handle.is_invalid() {
+                return;
+            }
+            let _ = TerminateProcess(handle, 1);
+            let _ = CloseHandle(handle);
         }
+    }
+
+    fn kill_processes_by_image(image: &str, exclude_pid: u32) {
+        let _ = Command::new("taskkill")
+            .args([
+                "/F",
+                "/T",
+                "/IM",
+                image,
+                "/FI",
+                &format!("PID ne {exclude_pid}"),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 
     fn wide(value: &str) -> Vec<u16> {
@@ -146,8 +155,8 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{
-    acquire_instance_guard, detach_working_directory, is_another_instance_running,
-    notify_existing_instance_show, start_show_listener, InstanceGuard,
+    acquire_instance_after_stop, detach_working_directory, is_another_instance_running,
+    stop_running_instances, InstanceGuard,
 };
 
 #[cfg(not(windows))]
@@ -156,9 +165,7 @@ pub fn is_another_instance_running() -> bool {
 }
 
 #[cfg(not(windows))]
-pub fn notify_existing_instance_show() -> bool {
-    false
-}
+pub fn stop_running_instances() {}
 
 #[cfg(not(windows))]
 pub fn acquire_instance_guard() -> Option<()> {
@@ -166,7 +173,9 @@ pub fn acquire_instance_guard() -> Option<()> {
 }
 
 #[cfg(not(windows))]
-pub fn detach_working_directory(_runtime_dir: &std::path::Path) {}
+pub fn acquire_instance_after_stop() -> Option<()> {
+    Some(())
+}
 
 #[cfg(not(windows))]
-pub fn start_show_listener(_app: tauri::AppHandle) {}
+pub fn detach_working_directory(_runtime_dir: &std::path::Path) {}

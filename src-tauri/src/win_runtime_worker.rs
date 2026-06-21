@@ -16,7 +16,7 @@ mod imp {
     };
 
     use crate::win_single_instance::{
-        detach_working_directory, is_another_instance_running, notify_existing_instance_show,
+        detach_working_directory, is_another_instance_running, stop_running_instances,
     };
 
     const WORKER_ARG: &str = "--worker";
@@ -40,8 +40,7 @@ mod imp {
         }
 
         if is_another_instance_running() {
-            let _ = notify_existing_instance_show();
-            return true;
+            stop_running_instances();
         }
 
         if cfg!(debug_assertions) {

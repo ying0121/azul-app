@@ -1,5 +1,5 @@
 import { formatUsDate } from '@/lib/formatDate'
-import { getRowApptDate, getRowDos, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
+import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 
 const HEADERS = [
@@ -15,6 +15,8 @@ const HEADERS = [
   'Value 1',
   'Value 2',
   'DOS',
+  'Refill Due',
+  'Coverage Ends',
 ]
 
 function sourceLabel(source: PatientRow['source']): string {
@@ -25,6 +27,8 @@ function rowToCells(row: PatientRow): string[] {
   const apptDate = getRowApptDate(row)
   const value1 = getRowValue1(row)
   const value2 = getRowValue2(row)
+  const refillDue = getRowRefillDue(row)
+  const coverageEnds = getRowCoverageEnds(row)
 
   return [
     sourceLabel(row.source),
@@ -39,6 +43,8 @@ function rowToCells(row: PatientRow): string[] {
     value1,
     value2,
     getRowDos(row),
+    refillDue,
+    coverageEnds,
   ]
 }
 

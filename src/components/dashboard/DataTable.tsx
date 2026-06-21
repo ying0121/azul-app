@@ -14,7 +14,7 @@ import { Eye, Pill, Stethoscope } from 'lucide-react'
 import type { PatientRow } from '@/types/patient'
 import { getPatientRowId } from '@/types/patient'
 import { formatUsDate } from '@/lib/formatDate'
-import { getRowApptDate, getRowDos, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
+import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
 import { useStatusColorStore } from '@/stores/statusColorStore'
 import { type SourceFilterState } from '@/types/filters'
@@ -117,6 +117,18 @@ export function DataTable({
         header: 'DOS',
         accessorKey: 'dos',
         cell: ({ row }) => getRowDos(row.original) || '—',
+      },
+      {
+        header: 'Refill Due',
+        id: 'refill_due',
+        accessorFn: (row) => getRowRefillDue(row),
+        cell: ({ row }) => getRowRefillDue(row.original) || '—',
+      },
+      {
+        header: 'Coverage Ends',
+        id: 'coverage_ends',
+        accessorFn: (row) => getRowCoverageEnds(row),
+        cell: ({ row }) => getRowCoverageEnds(row.original) || '—',
       },
       {
         id: 'actions',

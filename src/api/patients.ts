@@ -107,6 +107,8 @@ function mapDetails(source: PatientSource, details: Record<string, unknown>) {
     med1_drug_quantity: readNum('med1_drug_quantity', 'Med1DrugQuantity'),
     med1_refills_remain: readNum('med1_refills_remain', 'Med1RefillsRemain'),
     med1_refill_date: read('med1_refill_date', 'Med1RefillDate'),
+    refill_due: read('refill_due', 'RefillDue', 'med1_refill_date', 'Med1RefillDate'),
+    coverage_ends: read('coverage_ends', 'CoverageEnds', 'coverage_end', 'CoverageEnd'),
     ndc_1: read('ndc_1', 'Ndc1'),
     risk_level: read('risk_level', 'RiskLevel'),
     appt_date: read('appt_date', 'ApptDate'),

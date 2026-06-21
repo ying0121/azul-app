@@ -40,6 +40,8 @@ export interface MedAdhDetails {
   med1_drug_quantity: string | number
   med1_refills_remain: string | number
   med1_refill_date: string
+  refill_due: string
+  coverage_ends: string
   ndc_1: string
   risk_level: string
   appt_date: string

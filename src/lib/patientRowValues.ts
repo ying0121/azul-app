@@ -28,3 +28,14 @@ export function getRowValue2(row: PatientRow): string {
   if (!isHedisRow(row)) return ''
   return normalizeDisplayValue(row.details.value2)
 }
+
+export function getRowRefillDue(row: PatientRow): string {
+  if (isHedisRow(row)) return ''
+  const value = row.details.refill_due || row.details.med1_refill_date
+  return formatUsDate(value)
+}
+
+export function getRowCoverageEnds(row: PatientRow): string {
+  if (isHedisRow(row)) return ''
+  return formatUsDate(row.details.coverage_ends)
+}

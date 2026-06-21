@@ -47,6 +47,8 @@ export const DATE_DETAIL_KEYS = new Set([
   'discharge_date',
   'med1_dos',
   'med1_refill_date',
+  'refill_due',
+  'coverage_ends',
   'rx_dates_given',
 ])
 
