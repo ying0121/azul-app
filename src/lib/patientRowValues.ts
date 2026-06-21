@@ -12,7 +12,10 @@ function firstPresentDate(...values: Array<string | number | null | undefined>):
 }
 
 export function getRowApptDate(row: PatientRow): string {
-  return firstPresentDate(row.details.appt_date, row.dos)
+  if (isHedisRow(row)) {
+    return firstPresentDate(row.details.appt_date, row.dos)
+  }
+  return formatUsDate(row.details.appt_date)
 }
 
 export function getRowDos(row: PatientRow): string {
@@ -31,8 +34,7 @@ export function getRowValue2(row: PatientRow): string {
 
 export function getRowRefillDue(row: PatientRow): string {
   if (isHedisRow(row)) return ''
-  const value = row.details.refill_due || row.details.med1_refill_date
-  return formatUsDate(value)
+  return formatUsDate(row.details.refill_due)
 }
 
 export function getRowCoverageEnds(row: PatientRow): string {

@@ -27,7 +27,7 @@ export const ALL_QUALITY_PROGRAM_OPTION: QualityProgramOption = {
   qp_name: 'All Quality Program',
 }
 
-export type ApptFilterPreset = 'one_day' | 'next_7' | 'next_15' | 'next_30' | 'custom'
+export type ApptFilterPreset = 'today' | 'next_7' | 'next_15' | 'next_30' | 'custom'
 
 export interface ApptFilterState {
   preset: ApptFilterPreset
@@ -45,7 +45,7 @@ export interface PatientFilters {
 }
 
 export const DEFAULT_APPT_FILTER: ApptFilterState = {
-  preset: 'next_7',
+  preset: 'today',
   customEndDate: '',
 }
 
@@ -104,7 +104,7 @@ export function toggleSourceFilterMedAdh(current: SourceFilterState): SourceFilt
 }
 
 export const APPT_FILTER_OPTIONS: { value: ApptFilterPreset; label: string }[] = [
-  { value: 'one_day', label: 'Only One Day' },
+  { value: 'today', label: 'Today' },
   { value: 'next_7', label: 'Next 7 Days' },
   { value: 'next_15', label: 'Next 15 Days' },
   { value: 'next_30', label: 'Next 30 Days' },
@@ -122,7 +122,7 @@ export function resolveApptRange(state: ApptFilterState): {
   const appt_start = getClinicTodayDateString()
 
   switch (state.preset) {
-    case 'one_day':
+    case 'today':
       return { appt_start, appt_end: appt_start }
     case 'next_7':
       return { appt_start, appt_end: addCalendarDays(appt_start, 7) }
@@ -137,7 +137,7 @@ export function resolveApptRange(state: ApptFilterState): {
       return { appt_start, appt_end: end }
     }
     default:
-      return { appt_start, appt_end: addCalendarDays(appt_start, 7) }
+      return { appt_start, appt_end: appt_start }
   }
 }
 

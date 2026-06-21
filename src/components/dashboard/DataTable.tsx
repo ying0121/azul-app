@@ -12,7 +12,7 @@ import {
 import { motion } from 'framer-motion'
 import { Eye, Pill, Stethoscope } from 'lucide-react'
 import type { PatientRow } from '@/types/patient'
-import { getPatientRowId } from '@/types/patient'
+import { getPatientRowId, isHedisRow } from '@/types/patient'
 import { formatUsDate } from '@/lib/formatDate'
 import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
@@ -105,13 +105,15 @@ export function DataTable({
         header: 'Value 1',
         id: 'value1',
         accessorFn: (row) => getRowValue1(row),
-        cell: ({ row }) => getRowValue1(row.original),
+        cell: ({ row }) =>
+          isHedisRow(row.original) ? getRowValue1(row.original) || '—' : '—',
       },
       {
         header: 'Value 2',
         id: 'value2',
         accessorFn: (row) => getRowValue2(row),
-        cell: ({ row }) => getRowValue2(row.original),
+        cell: ({ row }) =>
+          isHedisRow(row.original) ? getRowValue2(row.original) || '—' : '—',
       },
       {
         header: 'DOS',
@@ -122,13 +124,15 @@ export function DataTable({
         header: 'Refill Due',
         id: 'refill_due',
         accessorFn: (row) => getRowRefillDue(row),
-        cell: ({ row }) => getRowRefillDue(row.original) || '—',
+        cell: ({ row }) =>
+          isHedisRow(row.original) ? '—' : getRowRefillDue(row.original) || '—',
       },
       {
         header: 'Coverage Ends',
         id: 'coverage_ends',
         accessorFn: (row) => getRowCoverageEnds(row),
-        cell: ({ row }) => getRowCoverageEnds(row.original) || '—',
+        cell: ({ row }) =>
+          isHedisRow(row.original) ? '—' : getRowCoverageEnds(row.original) || '—',
       },
       {
         id: 'actions',

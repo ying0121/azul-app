@@ -57,9 +57,14 @@ function readDetails(data: Record<string, unknown>): Record<string, unknown> {
   return {}
 }
 
-function mapDetails(source: PatientSource, details: Record<string, unknown>) {
+function mapDetails(
+  source: PatientSource,
+  details: Record<string, unknown>,
+  item: Record<string, unknown>,
+) {
   const read = (...keys: string[]) => readString(details, ...keys)
   const readNum = (...keys: string[]) => readScalar(details, ...keys)
+  const readItem = (...keys: string[]) => readString(item, ...keys)
 
   if (source === 'hedis') {
     return {
@@ -107,11 +112,13 @@ function mapDetails(source: PatientSource, details: Record<string, unknown>) {
     med1_drug_quantity: readNum('med1_drug_quantity', 'Med1DrugQuantity'),
     med1_refills_remain: readNum('med1_refills_remain', 'Med1RefillsRemain'),
     med1_refill_date: read('med1_refill_date', 'Med1RefillDate'),
-    refill_due: read('refill_due', 'RefillDue', 'med1_refill_date', 'Med1RefillDate'),
-    coverage_ends: read('coverage_ends', 'CoverageEnds', 'coverage_end', 'CoverageEnd'),
+    refill_due: read('refill_due', 'RefillDue') || readItem('refill_due', 'RefillDue'),
+    coverage_ends:
+      read('coverage_ends', 'CoverageEnds', 'coverage_end', 'CoverageEnd') ||
+      readItem('coverage_ends', 'CoverageEnds', 'coverage_end', 'CoverageEnd'),
     ndc_1: read('ndc_1', 'Ndc1'),
     risk_level: read('risk_level', 'RiskLevel'),
-    appt_date: read('appt_date', 'ApptDate'),
+    appt_date: read('appt_date', 'ApptDate') || readItem('appt_date', 'ApptDate'),
     appt_visit: read('appt_visit', 'ApptVisit'),
     event_date: read('event_date', 'EventDate'),
     v_status: read('v_status', 'VStatus'),
@@ -167,7 +174,7 @@ function parsePatientRow(item: unknown): PatientRow | null {
     pcp_lname: readString(item, 'pcp_lname', 'pcpLname', 'PcpLname'),
   }
 
-  const details = mapDetails(source, readDetails(item))
+  const details = mapDetails(source, readDetails(item), item)
 
   if (source === 'hedis') {
     return { ...base, source: 'hedis', details: details as HedisDetails }
