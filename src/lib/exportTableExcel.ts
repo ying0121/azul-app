@@ -1,5 +1,5 @@
 import { formatUsDate } from '@/lib/formatDate'
-import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
+import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowPcpName, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 
 const HEADERS = [
@@ -12,6 +12,7 @@ const HEADERS = [
   'DOB',
   'Measure',
   'Appt Date',
+  'PCP Name',
   'Value 1',
   'Value 2',
   'DOS',
@@ -40,6 +41,7 @@ function rowToCells(row: PatientRow): string[] {
     formatUsDate(row.pt_dob) || '',
     row.measure || '',
     apptDate,
+    getRowPcpName(row),
     value1,
     value2,
     getRowDos(row),

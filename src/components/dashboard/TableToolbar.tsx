@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { FileSpreadsheet, Filter, Mail, Palette, RefreshCw, Search } from 'lucide-react'
 import clsx from 'clsx'
 import { FilterSelect } from '@/components/ui/FilterSelect'
-import type { InsuranceOption, QualityProgramOption } from '@/types/filters'
+import type { InsuranceOption, PcpOption, QualityProgramOption } from '@/types/filters'
 
 interface TableToolbarProps {
   title: string
@@ -19,12 +19,16 @@ interface TableToolbarProps {
   totalCount: number
   insuranceOptions: InsuranceOption[]
   qualityProgramOptions: QualityProgramOption[]
+  pcpOptions: PcpOption[]
   selectedInsuranceId: string
   selectedQualityProgramId: string
+  selectedPcpId: string
   onInsuranceChange: (insId: string) => void
   onQualityProgramChange: (qpId: string) => void
+  onPcpChange: (pcpId: string) => void
   isInsuranceLoading?: boolean
   isQualityProgramLoading?: boolean
+  isPcpLoading?: boolean
 }
 
 export function TableToolbar({
@@ -42,12 +46,16 @@ export function TableToolbar({
   totalCount,
   insuranceOptions,
   qualityProgramOptions,
+  pcpOptions,
   selectedInsuranceId,
   selectedQualityProgramId,
+  selectedPcpId,
   onInsuranceChange,
   onQualityProgramChange,
+  onPcpChange,
   isInsuranceLoading,
   isQualityProgramLoading,
+  isPcpLoading,
 }: TableToolbarProps) {
   return (
     <motion.div
@@ -87,6 +95,19 @@ export function TableToolbar({
             disabled={!selectedInsuranceId || isQualityProgramLoading}
             loading={isQualityProgramLoading}
             ariaLabel="Filter by quality program"
+          />
+
+          <FilterSelect
+            value={selectedPcpId}
+            onChange={onPcpChange}
+            options={pcpOptions.map((option) => ({
+              value: option.pcp_id,
+              label: option.pcp_name,
+            }))}
+            placeholder="PCP"
+            disabled={isPcpLoading}
+            loading={isPcpLoading}
+            ariaLabel="Filter by PCP name"
           />
         </div>
 

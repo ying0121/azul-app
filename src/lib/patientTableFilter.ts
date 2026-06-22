@@ -1,7 +1,7 @@
 import type { PatientRow } from '@/types/patient'
 import { isHedisRow } from '@/types/patient'
 import { isNullishValue } from '@/lib/formatDate'
-import { getRowCoverageEnds, getRowRefillDue } from '@/lib/patientRowValues'
+import { getRowCoverageEnds, getRowPcpName, getRowRefillDue } from '@/lib/patientRowValues'
 import { matchesSourceFilter, type SourceFilterState } from '@/types/filters'
 
 export function matchesPatientSearch(row: PatientRow, search: string): boolean {
@@ -20,6 +20,7 @@ export function matchesPatientSearch(row: PatientRow, search: string): boolean {
     row.measure,
     row.measure_id,
     row.details.appt_date,
+    getRowPcpName(row),
     isHedisRow(row) ? row.details.value1 : '',
     isHedisRow(row) ? row.details.value2 : '',
     getRowRefillDue(row),

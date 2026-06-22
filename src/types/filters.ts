@@ -6,6 +6,7 @@ import {
 
 export const ALL_INSURANCES_ID = '0'
 export const ALL_QUALITY_PROGRAM_ID = '0'
+export const ALL_PCPS_ID = '0'
 
 export interface InsuranceOption {
   ins_id: string
@@ -17,6 +18,11 @@ export interface QualityProgramOption {
   qp_name: string
 }
 
+export interface PcpOption {
+  pcp_id: string
+  pcp_name: string
+}
+
 export const ALL_INSURANCES_OPTION: InsuranceOption = {
   ins_id: ALL_INSURANCES_ID,
   ins_name: 'All Insurances',
@@ -25,6 +31,11 @@ export const ALL_INSURANCES_OPTION: InsuranceOption = {
 export const ALL_QUALITY_PROGRAM_OPTION: QualityProgramOption = {
   qp_id: ALL_QUALITY_PROGRAM_ID,
   qp_name: 'All Quality Program',
+}
+
+export const ALL_PCPS_OPTION: PcpOption = {
+  pcp_id: ALL_PCPS_ID,
+  pcp_name: 'All PCPs',
 }
 
 export type ApptFilterPreset = 'today' | 'next_7' | 'next_15' | 'next_30' | 'custom'
@@ -38,6 +49,7 @@ export interface PatientFilters {
   clinic_id?: string | number
   ins_id?: string
   qp_id?: string
+  pcp_id?: string
   cyear?: string | number
   filter?: string
   appt_start?: string

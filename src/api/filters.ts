@@ -1,6 +1,6 @@
 import { apiClient, USE_MOCK } from './client'
-import { mockInsurance, mockQualityPrograms } from './mock'
-import type { InsuranceOption, QualityProgramOption } from '@/types/filters'
+import { mockInsurance, mockPcpList, mockQualityPrograms } from './mock'
+import type { InsuranceOption, PcpOption, QualityProgramOption } from '@/types/filters'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -47,6 +47,19 @@ function parseQualityProgramItem(item: unknown): QualityProgramOption | null {
   return { qp_id, qp_name }
 }
 
+function parsePcpItem(item: unknown): PcpOption | null {
+  if (!isRecord(item)) return null
+
+  const pcp_id = readString(item, 'id', 'Id', 'pcp_id', 'pcpId', 'PcpId')
+  const fname = readString(item, 'fname', 'Fname', 'pcp_fname', 'pcpFname', 'PcpFname')
+  const lname = readString(item, 'lname', 'Lname', 'pcp_lname', 'pcpLname', 'PcpLname')
+  const pcp_name = `${fname} ${lname}`.trim() || readString(item, 'pcp_name', 'pcpName', 'PcpName', 'name', 'Name')
+
+  if (!pcp_id || !pcp_name) return null
+
+  return { pcp_id, pcp_name }
+}
+
 export async function fetchInsuranceList(
   clinicId: string | number,
 ): Promise<InsuranceOption[]> {
@@ -81,6 +94,21 @@ export async function fetchQualityPrograms(
   return unwrapList(data)
     .map(parseQualityProgramItem)
     .filter((item): item is QualityProgramOption => item != null)
+}
+
+export async function fetchPcpList(clinicId: string | number): Promise<PcpOption[]> {
+  if (USE_MOCK) {
+    await delay(250)
+    return mockPcpList
+  }
+
+  const { data } = await apiClient.post<unknown>('/daily-huddle/pcp', {
+    clinic_id: clinicId,
+  })
+
+  return unwrapList(data)
+    .map(parsePcpItem)
+    .filter((item): item is PcpOption => item != null)
 }
 
 function delay(ms: number) {

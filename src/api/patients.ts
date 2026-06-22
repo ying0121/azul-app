@@ -1,7 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
 import { getClinicYear } from '@/lib/clinicDate'
 import { saveHuddleToken } from '@/lib/session'
-import { mockPatients } from './mock'
+import { mockPatients, mockPcpList } from './mock'
 import type { PatientFilters } from '@/types/filters'
 import type {
   HedisDetails,
@@ -184,9 +184,20 @@ function parsePatientRow(item: unknown): PatientRow | null {
 }
 
 function filterMockPatients(filters: PatientFilters): PatientRow[] {
+  const selectedPcpName =
+    filters.pcp_id && filters.pcp_id !== '0'
+      ? mockPcpList.find((option) => option.pcp_id === filters.pcp_id)?.pcp_name
+          .trim()
+          .toLowerCase()
+      : null
+
   return mockPatients.filter((row) => {
-    if (filters.ins_id && row.ins_id !== filters.ins_id) return false
-    if (filters.qp_id && row.qp_id !== filters.qp_id) return false
+    if (filters.ins_id && filters.ins_id !== '0' && row.ins_id !== filters.ins_id) return false
+    if (filters.qp_id && filters.qp_id !== '0' && row.qp_id !== filters.qp_id) return false
+    if (selectedPcpName) {
+      const rowPcpName = `${row.pcp_fname} ${row.pcp_lname}`.trim().toLowerCase()
+      if (rowPcpName !== selectedPcpName) return false
+    }
     return true
   })
 }
@@ -205,6 +216,7 @@ export async function fetchPatients(
     clinic_id: filters.clinic_id ?? '',
     ins_id: filters.ins_id ?? '',
     qp_id: filters.qp_id ?? '',
+    pcp_id: filters.pcp_id && filters.pcp_id !== '' ? filters.pcp_id : '0',
     cyear: filters.cyear ?? getClinicYear(),
     filter: filters.filter ?? '',
     appt_start: filters.appt_start ?? '',

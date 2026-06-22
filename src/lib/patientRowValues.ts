@@ -11,6 +11,10 @@ function firstPresentDate(...values: Array<string | number | null | undefined>):
   return ''
 }
 
+export function getRowPcpName(row: PatientRow): string {
+  return `${row.pcp_fname} ${row.pcp_lname}`.trim()
+}
+
 export function getRowApptDate(row: PatientRow): string {
   if (isHedisRow(row)) {
     return firstPresentDate(row.details.appt_date, row.dos)

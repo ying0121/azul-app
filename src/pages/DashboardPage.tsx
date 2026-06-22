@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchInsuranceList, fetchQualityPrograms } from '@/api/filters'
+import { fetchInsuranceList, fetchPcpList, fetchQualityPrograms } from '@/api/filters'
 import { prepareDailyVisitEmail, sendDailyEmail, type DailyEmailPreviewData } from '@/api/email'
 import { exportPatientsToExcel } from '@/lib/exportTableExcel'
 import { getClinicTodayDateString } from '@/lib/clinicDate'
@@ -19,6 +19,8 @@ import { getClinicDisplayName, getClinicId } from '@/types/auth'
 import {
   ALL_INSURANCES_ID,
   ALL_INSURANCES_OPTION,
+  ALL_PCPS_ID,
+  ALL_PCPS_OPTION,
   ALL_QUALITY_PROGRAM_ID,
   ALL_QUALITY_PROGRAM_OPTION,
   DEFAULT_APPT_FILTER,
@@ -29,6 +31,7 @@ import {
   resolveApptRange,
   type ApptFilterState,
   type InsuranceOption,
+  type PcpOption,
   type QualityProgramOption,
   type SourceFilterState,
 } from '@/types/filters'
@@ -48,8 +51,10 @@ export function DashboardPage() {
   const [patients, setPatients] = useState<PatientRow[]>([])
   const [insuranceOptions, setInsuranceOptions] = useState<InsuranceOption[]>([])
   const [qualityProgramOptions, setQualityProgramOptions] = useState<QualityProgramOption[]>([])
+  const [pcpOptions, setPcpOptions] = useState<PcpOption[]>([])
   const [selectedInsuranceId, setSelectedInsuranceId] = useState(ALL_INSURANCES_ID)
   const [selectedQualityProgramId, setSelectedQualityProgramId] = useState(ALL_QUALITY_PROGRAM_ID)
+  const [selectedPcpId, setSelectedPcpId] = useState(ALL_PCPS_ID)
   const [search, setSearch] = useState('')
   const [appliedApptFilter, setAppliedApptFilter] = useState<ApptFilterState>(DEFAULT_APPT_FILTER)
   const [draftApptFilter, setDraftApptFilter] = useState<ApptFilterState>(DEFAULT_APPT_FILTER)
@@ -63,6 +68,7 @@ export function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isInsuranceLoading, setIsInsuranceLoading] = useState(false)
   const [isQualityProgramLoading, setIsQualityProgramLoading] = useState(false)
+  const [isPcpLoading, setIsPcpLoading] = useState(false)
   const [isSendingEmail, setIsSendingEmail] = useState(false)
   const [isEmailPreviewOpen, setIsEmailPreviewOpen] = useState(false)
   const [isEmailPreviewLoading, setIsEmailPreviewLoading] = useState(false)
@@ -71,15 +77,18 @@ export function DashboardPage() {
   const showAlertRef = useRef(showAlert)
   const selectedInsuranceIdRef = useRef(selectedInsuranceId)
   const selectedQualityProgramIdRef = useRef(selectedQualityProgramId)
+  const selectedPcpIdRef = useRef(selectedPcpId)
   const searchRef = useRef(search)
   const appliedApptFilterRef = useRef(appliedApptFilter)
   const loadedInsuranceForClinic = useRef<string | null>(null)
   const loadedQualityForInsurance = useRef<string | null>(null)
+  const loadedPcpForClinic = useRef<string | null>(null)
   const hasLoadedPatientsOnce = useRef(false)
 
   showAlertRef.current = showAlert
   selectedInsuranceIdRef.current = selectedInsuranceId
   selectedQualityProgramIdRef.current = selectedQualityProgramId
+  selectedPcpIdRef.current = selectedPcpId
   searchRef.current = search
   appliedApptFilterRef.current = appliedApptFilter
 
@@ -90,6 +99,7 @@ export function DashboardPage() {
       clinic_id: activeClinicId,
       ins_id: selectedInsuranceIdRef.current,
       qp_id: selectedQualityProgramIdRef.current,
+      pcp_id: selectedPcpIdRef.current || ALL_PCPS_ID,
       cyear: getCurrentYear(),
       filter: searchRef.current.trim(),
       appt_start,
@@ -168,6 +178,26 @@ export function DashboardPage() {
     [],
   )
 
+  const loadPcpOptions = useCallback(async (activeClinicId: string) => {
+    if (loadedPcpForClinic.current === activeClinicId) return
+
+    setIsPcpLoading(true)
+    try {
+      const options = await fetchPcpList(activeClinicId)
+      setPcpOptions([ALL_PCPS_OPTION, ...options])
+    } catch (err: unknown) {
+      showAlertRef.current(
+        'error',
+        'Load Failed',
+        (err as { friendlyMessage?: string }).friendlyMessage ??
+          'Unable to load PCP options.',
+      )
+    } finally {
+      loadedPcpForClinic.current = activeClinicId
+      setIsPcpLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (clinicId == null) return
     void loadStatusColors()
@@ -178,16 +208,20 @@ export function DashboardPage() {
 
     loadedInsuranceForClinic.current = null
     loadedQualityForInsurance.current = null
+    loadedPcpForClinic.current = null
     hasLoadedPatientsOnce.current = false
 
     setSelectedInsuranceId(ALL_INSURANCES_ID)
     setSelectedQualityProgramId(ALL_QUALITY_PROGRAM_ID)
+    setSelectedPcpId(ALL_PCPS_ID)
     setInsuranceOptions([])
     setQualityProgramOptions([])
+    setPcpOptions([])
     setPatients([])
 
     void loadInsuranceOptions(clinicId)
-  }, [clinicId, loadInsuranceOptions])
+    void loadPcpOptions(clinicId)
+  }, [clinicId, loadInsuranceOptions, loadPcpOptions])
 
   useEffect(() => {
     if (insuranceOptions.length === 0) return
@@ -226,6 +260,15 @@ export function DashboardPage() {
   }, [qualityProgramOptions, selectedQualityProgramId])
 
   useEffect(() => {
+    if (pcpOptions.length === 0) return
+
+    const isValid = pcpOptions.some((option) => option.pcp_id === selectedPcpId)
+    if (!isValid) {
+      setSelectedPcpId(pcpOptions[0].pcp_id)
+    }
+  }, [pcpOptions, selectedPcpId])
+
+  useEffect(() => {
     if (clinicId == null || !selectedInsuranceId || !selectedQualityProgramId) return
 
     void loadPatients(hasLoadedPatientsOnce.current)
@@ -239,6 +282,14 @@ export function DashboardPage() {
   const handleQualityProgramChange = (qpId: string) => {
     if (!qpId || qpId === selectedQualityProgramId) return
     setSelectedQualityProgramId(qpId)
+  }
+
+  const handlePcpChange = (pcpId: string) => {
+    const nextPcpId = pcpId || ALL_PCPS_ID
+    if (nextPcpId === selectedPcpId) return
+    selectedPcpIdRef.current = nextPcpId
+    setSelectedPcpId(nextPcpId)
+    void loadPatients(true)
   }
 
   const handleRefresh = () => {
@@ -383,12 +434,16 @@ export function DashboardPage() {
           totalCount={filteredPatientCount}
           insuranceOptions={insuranceOptions}
           qualityProgramOptions={qualityProgramOptions}
+          pcpOptions={pcpOptions}
           selectedInsuranceId={selectedInsuranceId}
           selectedQualityProgramId={selectedQualityProgramId}
+          selectedPcpId={selectedPcpId}
           onInsuranceChange={handleInsuranceChange}
           onQualityProgramChange={handleQualityProgramChange}
+          onPcpChange={handlePcpChange}
           isInsuranceLoading={isInsuranceLoading}
           isQualityProgramLoading={isQualityProgramLoading}
+          isPcpLoading={isPcpLoading}
         />
 
         <DataTable

@@ -45,6 +45,11 @@ export const mockInsurance = [
   { ins_id: 'INS-UHC', ins_name: 'UnitedHealthcare' },
 ]
 
+export const mockPcpList = [
+  { pcp_id: '1', pcp_name: 'John Smith' },
+  { pcp_id: '2', pcp_name: 'Sarah Lee' },
+]
+
 export const mockQualityPrograms: Record<
   string,
   { qp_id: string; qp_name: string }[]
