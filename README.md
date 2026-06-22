@@ -62,7 +62,6 @@ Copy `.env.example` to `.env` and set your backend URLs:
 | `VITE_API_BASE_URL` | Backend API base URL (used in **production** / packaged builds) |
 | `VITE_API_PROXY_TARGET` | Backend URL for the **Vite dev proxy** (`npm run dev`, `npm run dev:web`) |
 | `VITE_USE_MOCK` | `true` to use mock auth/data |
-| `VITE_CLINIC_TIMEZONE` | Clinic timezone for date filters (default `America/New_York`) |
 
 Both API variables should normally point at the same server, e.g. `https://ehr.example.com`.
 
