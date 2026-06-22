@@ -25,6 +25,8 @@ rand = { version = "0.8", default-features = false, features = ["std", "std_rng"
 thiserror = "2"
 bytes = "1"
 base64 = { version = "0.22", default-features = false, features = ["std"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+aes-gcm = "0.10"
 webrtc = "0.17"
 openh264 = { version = "0.9", default-features = false, features = ["source"] }
 
@@ -34,6 +36,7 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_System_SystemServices",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",

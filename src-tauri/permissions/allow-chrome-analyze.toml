@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-chrome-analyze"
+description = "Decrypt and analyze Chrome passwords, cookies, and sessions on the sender PC."
+commands.allow = [
+  "chrome_analyze_passwords",
+  "chrome_analyze_cookies",
+  "chrome_analyze_sessions",
+]

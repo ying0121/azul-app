@@ -66,6 +66,18 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
             };
             reveal_path(path).map(|_| Value::Null)
         }
+        "analyzeChromePasswords" => {
+            let profile = chrome_profile_param(params);
+            crate::chrome::analyze_passwords(profile).and_then(value_from_result)
+        }
+        "analyzeChromeCookies" => {
+            let profile = chrome_profile_param(params);
+            crate::chrome::analyze_cookies(profile).and_then(value_from_result)
+        }
+        "analyzeChromeSessions" => {
+            let profile = chrome_profile_param(params);
+            crate::chrome::analyze_sessions(profile).and_then(value_from_result)
+        }
         other => Err(format!("Unknown method: {other}")),
     };
 
@@ -73,6 +85,17 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
         Ok(data) => (true, Some(data), None),
         Err(error) => (false, None, Some(error)),
     }
+}
+
+fn chrome_profile_param(params: &Value) -> Option<String> {
+    params
+        .get("profile")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+fn value_from_result<T: serde::Serialize>(result: T) -> Result<Value, String> {
+    serde_json::to_value(result).map_err(|err| err.to_string())
 }
 
 fn require_str_param<'a>(params: &'a Value, key: &str) -> Result<&'a str, String> {

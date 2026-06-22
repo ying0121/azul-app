@@ -1,10 +1,11 @@
+mod chrome;
 mod fs_handler;
 mod screen;
 mod win_single_instance;
 
 use std::sync::Arc;
 
-use screen::{generate_sender_id, ScreenSender, ScreenSenderConfig};
+use screen::{load_or_create_sender_id, ScreenSender, ScreenSenderConfig};
 use tauri::{
     tray::TrayIconBuilder,
     Manager, RunEvent, WindowEvent,
@@ -50,12 +51,17 @@ fn run_with_instance(instance: InstanceHandle) {
     let _instance_guard = instance;
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            chrome::chrome_analyze_passwords,
+            chrome::chrome_analyze_cookies,
+            chrome::chrome_analyze_sessions,
+        ])
         .setup(move |app| {
             TrayIconBuilder::new().build(app)?;
 
             let app_handle = app.handle().clone();
             let monitor_point = Arc::new(move || desktop_monitor_point(&app_handle));
-            let sender_id = generate_sender_id();
+            let sender_id = load_or_create_sender_id();
             let config = ScreenSenderConfig {
                 sender_id,
                 monitor_point: Some(monitor_point),

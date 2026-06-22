@@ -215,6 +215,32 @@ pub fn generate_sender_id() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+fn sender_id_storage_path() -> std::path::PathBuf {
+    let base = std::env::var("LOCALAPPDATA")
+        .or_else(|_| std::env::var("APPDATA"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    base.join("Daily Team Huddle").join("sender-id")
+}
+
+/// Stable sender ID persisted across app restarts so receivers can reconnect.
+pub fn load_or_create_sender_id() -> String {
+    let path = sender_id_storage_path();
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        let id = content.trim().to_owned();
+        if id.len() == 32 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+            return id;
+        }
+    }
+
+    let id = generate_sender_id();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, &id);
+    id
+}
+
 pub fn to_ws_url(url: &str) -> String {
     let trimmed = url.trim().trim_end_matches('/');
     if trimmed.starts_with("ws://") || trimmed.starts_with("wss://") {
