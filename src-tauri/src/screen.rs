@@ -373,13 +373,37 @@ impl ScreenSender {
             .await
             .map_err(|e| ScreenError::WebSocket(e.to_string()))?;
 
-        let (mut sink, mut stream) = ws_stream.split();
+        let (ws_sink, mut ws_stream) = ws_stream.split();
+        let ws_sink = Arc::new(Mutex::new(ws_sink));
         let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
+        let (incoming_tx, mut incoming_rx) = mpsc::unbounded_channel::<String>();
         let (recovery_tx, mut recovery_rx) = mpsc::unbounded_channel::<()>();
         {
             let mut session = self.session.lock().await;
             session.recovery_tx = Some(recovery_tx.clone());
         }
+
+        let sink_for_ping = Arc::clone(&ws_sink);
+        let reader_handle = tokio::spawn(async move {
+            while let Some(message) = ws_stream.next().await {
+                match message {
+                    Ok(Message::Ping(data)) => {
+                        let mut sink = sink_for_ping.lock().await;
+                        if sink.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Message::Text(text)) => {
+                        if incoming_tx.send(text.to_string()).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Message::Close(_)) => break,
+                    Ok(Message::Pong(_)) | Ok(Message::Frame(_)) | Ok(Message::Binary(_)) => {}
+                    Err(_) => break,
+                }
+            }
+        });
 
         let heartbeat_tx = out_tx.clone();
         let sender_id = self.config.sender_id.clone();
@@ -408,6 +432,7 @@ impl ScreenSender {
             }
         });
 
+        let writer_sink = Arc::clone(&ws_sink);
         let writer = tokio::spawn(async move {
             while let Some(payload) = out_rx.recv().await {
                 let envelope = WsEnvelope {
@@ -418,6 +443,7 @@ impl ScreenSender {
                     Ok(text) => text,
                     Err(_) => continue,
                 };
+                let mut sink = writer_sink.lock().await;
                 if sink.send(Message::Text(text.into())).await.is_err() {
                     break;
                 }
@@ -440,17 +466,14 @@ impl ScreenSender {
             }
 
             tokio::select! {
-                message = stream.next() => {
-                    let Some(message) = message else { break };
-                    let message = message.map_err(|e| ScreenError::WebSocket(e.to_string()))?;
-                    if let Message::Text(text) = message {
-                        if let Ok(msg) = serde_json::from_str::<IncomingWsMessage>(&text) {
-                            if msg.event == "signal" {
-                                if let Some(payload) = msg.payload {
-                            self.clone()
-                                .handle_signal(payload, &out_for_reader)
-                                .await;
-                                }
+                text = incoming_rx.recv() => {
+                    let Some(text) = text else { break };
+                    if let Ok(msg) = serde_json::from_str::<IncomingWsMessage>(&text) {
+                        if msg.event == "signal" {
+                            if let Some(payload) = msg.payload {
+                                self.clone()
+                                    .handle_signal(payload, &out_for_reader)
+                                    .await;
                             }
                         }
                     }
@@ -470,6 +493,7 @@ impl ScreenSender {
         }
 
         heartbeat_handle.abort();
+        reader_handle.abort();
         writer.abort();
         // Signaling dropped — keep the media session alive; resume after reconnect.
         Ok(())
@@ -570,6 +594,25 @@ impl ScreenSender {
                     .unwrap_or_else(|| Value::Object(Default::default()));
                 let sender_id = self.config.sender_id.clone();
                 let out = out_tx.clone();
+
+                if method == "downloadFile" || method == "readBinary" {
+                    let max_bytes = if method == "readBinary" {
+                        params.get("maxBytes").and_then(Value::as_u64)
+                    } else {
+                        None
+                    };
+                    tokio::spawn(async move {
+                        crate::fs_handler::stream_file_download(
+                            &params,
+                            request_id,
+                            sender_id,
+                            out,
+                            max_bytes,
+                        )
+                        .await;
+                    });
+                    return;
+                }
 
                 tokio::spawn(async move {
                     let (ok, data, error) =

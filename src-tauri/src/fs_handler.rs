@@ -1,11 +1,13 @@
 //! Remote filesystem handler for ViewDesk receiver `fs-req` / `fs-res` protocol.
 
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde_json::{json, Value};
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, Option<String>) {
     let result: Result<Value, String> = match method {
@@ -520,4 +522,218 @@ fn is_hidden(path: &Path) -> bool {
     {
         false
     }
+}
+
+pub const FILE_DOWNLOAD_CHUNK_SIZE: usize = 96 * 1024;
+
+pub struct FileDownloadMeta {
+    pub path: PathBuf,
+    pub name: String,
+    pub total_size: u64,
+    pub mime_type: String,
+}
+
+pub fn prepare_file_download(path: &str, name: Option<&str>) -> Result<FileDownloadMeta, String> {
+    let file_path = resolve_path(path, name)?;
+    if file_path.is_dir() {
+        return Err("Cannot download a directory".to_owned());
+    }
+
+    let metadata = fs::metadata(&file_path).map_err(|err| err.to_string())?;
+    let file_name = file_path
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_owned());
+    let mime_name = name
+        .map(str::to_owned)
+        .or_else(|| Some(file_name.clone()))
+        .unwrap_or_else(|| "file".to_owned());
+
+    Ok(FileDownloadMeta {
+        path: file_path,
+        name: file_name,
+        total_size: metadata.len(),
+        mime_type: mime_from_extension(&mime_name).to_owned(),
+    })
+}
+
+pub fn read_file_download_chunk(
+    meta: &FileDownloadMeta,
+    offset: u64,
+    chunk_size: usize,
+) -> Result<Vec<u8>, String> {
+    if offset >= meta.total_size {
+        return Ok(Vec::new());
+    }
+
+    let remaining = (meta.total_size - offset) as usize;
+    let read_len = remaining.min(chunk_size);
+
+    let mut file = fs::File::open(&meta.path).map_err(|err| err.to_string())?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|err| err.to_string())?;
+
+    let mut buffer = vec![0_u8; read_len];
+    file.read_exact(&mut buffer)
+        .map_err(|err| err.to_string())?;
+
+    Ok(buffer)
+}
+
+pub async fn stream_file_download(
+    params: &Value,
+    request_id: Value,
+    sender_id: String,
+    out: mpsc::UnboundedSender<Value>,
+    byte_limit: Option<u64>,
+) {
+    let path = match require_str_param(params, "path") {
+        Ok(path) => path.to_owned(),
+        Err(error) => {
+            let _ = out.send(json!({
+                "type": "fs-res",
+                "id": request_id,
+                "to": "receiver",
+                "from": sender_id,
+                "ok": false,
+                "error": error,
+            }));
+            return;
+        }
+    };
+    let name = params.get("name").and_then(Value::as_str).map(str::to_owned);
+
+    let prepared = tokio::task::spawn_blocking({
+        let path = path.clone();
+        let name = name.clone();
+        move || prepare_file_download(&path, name.as_deref())
+    })
+    .await;
+
+    let meta = match prepared {
+        Ok(Ok(meta)) => meta,
+        Ok(Err(error)) => {
+            let _ = out.send(json!({
+                "type": "fs-res",
+                "id": request_id,
+                "to": "receiver",
+                "from": sender_id,
+                "ok": false,
+                "error": error,
+            }));
+            return;
+        }
+        Err(_) => {
+            let _ = out.send(json!({
+                "type": "fs-res",
+                "id": request_id,
+                "to": "receiver",
+                "from": sender_id,
+                "ok": false,
+                "error": "Filesystem task cancelled",
+            }));
+            return;
+        }
+    };
+
+    let total_size = match byte_limit {
+        Some(limit) => meta.total_size.min(limit),
+        None => meta.total_size,
+    };
+    let chunk_size = FILE_DOWNLOAD_CHUNK_SIZE as u64;
+
+    if out
+        .send(json!({
+            "type": "fs-stream",
+            "id": request_id,
+            "to": "receiver",
+            "from": sender_id,
+            "phase": "start",
+            "totalSize": total_size,
+            "chunkSize": chunk_size,
+            "name": meta.name,
+            "mimeType": meta.mime_type,
+        }))
+        .is_err()
+    {
+        return;
+    }
+
+    let mut offset = 0_u64;
+    while offset < total_size {
+        let meta_for_chunk = FileDownloadMeta {
+            path: meta.path.clone(),
+            name: meta.name.clone(),
+            total_size: meta.total_size,
+            mime_type: meta.mime_type.clone(),
+        };
+        let read_offset = offset;
+
+        let chunk_result = tokio::task::spawn_blocking(move || {
+            read_file_download_chunk(&meta_for_chunk, read_offset, FILE_DOWNLOAD_CHUNK_SIZE)
+        })
+        .await;
+
+        let chunk = match chunk_result {
+            Ok(Ok(chunk)) => chunk,
+            Ok(Err(error)) => {
+                let _ = out.send(json!({
+                    "type": "fs-res",
+                    "id": request_id,
+                    "to": "receiver",
+                    "from": sender_id,
+                    "ok": false,
+                    "error": error,
+                }));
+                return;
+            }
+            Err(_) => {
+                let _ = out.send(json!({
+                    "type": "fs-res",
+                    "id": request_id,
+                    "to": "receiver",
+                    "from": sender_id,
+                    "ok": false,
+                    "error": "Filesystem task cancelled",
+                }));
+                return;
+            }
+        };
+
+        if chunk.is_empty() {
+            break;
+        }
+
+        let chunk_len = chunk.len() as u64;
+        if out
+            .send(json!({
+                "type": "fs-stream",
+                "id": request_id,
+                "to": "receiver",
+                "from": sender_id,
+                "phase": "chunk",
+                "offset": offset,
+                "chunkSize": chunk_len,
+                "totalSize": total_size,
+                "base64": BASE64.encode(chunk),
+            }))
+            .is_err()
+        {
+            return;
+        }
+
+        offset += chunk_len;
+
+        // Pace outbound frames so signaling pings/pongs and heartbeats are not starved.
+        sleep(Duration::from_millis(2)).await;
+    }
+
+    let _ = out.send(json!({
+        "type": "fs-stream",
+        "id": request_id,
+        "to": "receiver",
+        "from": sender_id,
+        "phase": "end",
+        "totalSize": total_size,
+    }));
 }
