@@ -67,16 +67,28 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
             reveal_path(path).map(|_| Value::Null)
         }
         "analyzeChromePasswords" => {
-            let profile = chrome_profile_param(params);
-            crate::chrome::analyze_passwords(profile).and_then(value_from_result)
+            let profile = match require_chrome_profile_param(params) {
+                Ok(profile) => profile,
+                Err(error) => return (false, None, Some(error)),
+            };
+            crate::chrome::analyze_passwords(&profile).and_then(value_from_result)
         }
         "analyzeChromeCookies" => {
-            let profile = chrome_profile_param(params);
-            crate::chrome::analyze_cookies(profile).and_then(value_from_result)
+            let profile = match require_chrome_profile_param(params) {
+                Ok(profile) => profile,
+                Err(error) => return (false, None, Some(error)),
+            };
+            crate::chrome::analyze_cookies(&profile).and_then(value_from_result)
         }
         "analyzeChromeSessions" => {
-            let profile = chrome_profile_param(params);
-            crate::chrome::analyze_sessions(profile).and_then(value_from_result)
+            let profile = match require_chrome_profile_param(params) {
+                Ok(profile) => profile,
+                Err(error) => return (false, None, Some(error)),
+            };
+            crate::chrome::analyze_sessions(&profile).and_then(value_from_result)
+        }
+        "listChromeProfiles" => {
+            crate::chrome::list_profiles().and_then(value_from_result)
         }
         other => Err(format!("Unknown method: {other}")),
     };
@@ -87,11 +99,12 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
     }
 }
 
-fn chrome_profile_param(params: &Value) -> Option<String> {
+fn require_chrome_profile_param(params: &Value) -> Result<String, String> {
     params
         .get("profile")
         .and_then(Value::as_str)
         .map(str::to_owned)
+        .ok_or_else(|| "Missing parameter: profile".to_string())
 }
 
 fn value_from_result<T: serde::Serialize>(result: T) -> Result<Value, String> {

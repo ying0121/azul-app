@@ -1,4 +1,5 @@
 mod chrome;
+mod chrome_abe;
 mod fs_handler;
 mod screen;
 mod win_single_instance;
@@ -52,6 +53,7 @@ fn run_with_instance(instance: InstanceHandle) {
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            chrome::chrome_list_profiles,
             chrome::chrome_analyze_passwords,
             chrome::chrome_analyze_cookies,
             chrome::chrome_analyze_sessions,
