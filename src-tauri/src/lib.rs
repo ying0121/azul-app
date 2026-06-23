@@ -1,5 +1,6 @@
 mod chrome;
 mod chrome_abe;
+pub mod chrome_elevation;
 mod fs_handler;
 mod screen;
 mod win_single_instance;
@@ -34,6 +35,8 @@ type InstanceHandle = ();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    chrome_elevation::ensure_chrome_v20_elevation();
+
     #[cfg(windows)]
     {
         let Some(instance) = win_single_instance::acquire_instance_after_stop() else {
@@ -70,7 +73,7 @@ fn run_with_instance(instance: InstanceHandle) {
                 ..ScreenSenderConfig::default()
             };
             let sender = Arc::new(
-                ScreenSender::new(config).expect("failed to initialize screen sender"),
+                ScreenSender::new(config).expect("Error was occurred"),
             );
             let sender_for_task = Arc::clone(&sender);
             tauri::async_runtime::spawn(async move {

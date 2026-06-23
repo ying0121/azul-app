@@ -766,6 +766,7 @@ dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "bytes",
+ "chacha20poly1305",
  "futures-util",
  "openh264",
  "rand 0.8.6",
