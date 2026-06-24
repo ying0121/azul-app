@@ -8,13 +8,10 @@ use std::time::Duration;
 use crate::chrome_abe;
 use crate::chrome_ielevator;
 
-pub const KEY_EXTRACT_ARG: &str = "--chrome-elevated-key";
-
 pub fn is_key_extractor_mode() -> bool {
   #[cfg(target_os = "windows")]
   {
-    let has_arg = std::env::args().any(|a| a == KEY_EXTRACT_ARG);
-    return is_process_elevated() && (has_arg || elevation_request_pending());
+    return is_process_elevated() && elevation_request_pending();
   }
   #[cfg(not(target_os = "windows"))]
   {
@@ -30,16 +27,12 @@ pub fn run_key_extractor() {
         None => std::process::exit(1),
     };
 
-    let use_ielevator = std::env::args().any(|a| a == chrome_ielevator::IELEVATOR_ARG);
-
-    let key = if use_ielevator {
+    let key = if chrome_ielevator::is_running_from_chrome_dir() {
         chrome_ielevator::extract_via_ielevator(&path)
     } else {
         chrome_abe::extract_app_bound_master_key(&path).or_else(|| {
             chrome_ielevator::spawn_chrome_path_helper_and_wait(
                 &path,
-                KEY_EXTRACT_ARG,
-                chrome_ielevator::IELEVATOR_ARG,
                 wait_for_cache,
                 |p| load_v20_key_cache(p).is_some(),
             )
@@ -347,18 +340,12 @@ fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
         .chain(std::iter::once(0))
         .collect();
 
-    let params = format!("{KEY_EXTRACT_ARG}");
-    let params_wide: Vec<u16> = OsStr::new(&params)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
         lpVerb: windows::core::w!("runas"),
         lpFile: PCWSTR(exe_wide.as_ptr()),
-        lpParameters: PCWSTR(params_wide.as_ptr()),
+        lpParameters: PCWSTR::null(),
         nShow: SW_HIDE.0 as i32,
         ..Default::default()
     };

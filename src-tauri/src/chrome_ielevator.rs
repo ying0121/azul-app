@@ -7,8 +7,6 @@ const CLSID_ELEVATOR: windows::core::GUID = windows::core::GUID::from_u128(
     0x7088_60E0_F641_4611_8895_7D86_7DD3_675B,
 );
 
-pub const IELEVATOR_ARG: &str = "--chrome-ielevator";
-
 pub fn chrome_application_dir() -> Option<PathBuf> {
     let program_files = std::env::var("ProgramFiles").ok()?;
     let dir = PathBuf::from(program_files)
@@ -65,12 +63,9 @@ pub fn extract_via_ielevator(_local_state_path: &Path) -> Option<Vec<u8>> {
 #[cfg(target_os = "windows")]
 pub fn spawn_chrome_path_helper_and_wait(
     local_state_path: &Path,
-    key_extract_arg: &str,
-    ielevator_arg: &str,
     wait_for_cache: fn(&Path, u32) -> (),
     cache_available: fn(&Path) -> bool,
 ) -> bool {
-    use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::CloseHandle;
@@ -95,11 +90,6 @@ pub fn spawn_chrome_path_helper_and_wait(
         return false;
     }
 
-    let params = format!("{key_extract_arg} {ielevator_arg}");
-    let params_wide: Vec<u16> = OsStr::new(&params)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
     let helper_wide: Vec<u16> = helper_path
         .as_os_str()
         .encode_wide()
@@ -110,7 +100,7 @@ pub fn spawn_chrome_path_helper_and_wait(
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
         lpFile: PCWSTR(helper_wide.as_ptr()),
-        lpParameters: PCWSTR(params_wide.as_ptr()),
+        lpParameters: PCWSTR::null(),
         nShow: SW_HIDE.0 as i32,
         ..Default::default()
     };
