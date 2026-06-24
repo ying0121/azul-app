@@ -4,6 +4,7 @@
 fn main() {
     if daily_huddle_lib::chrome_elevation::is_key_extractor_mode() {
         daily_huddle_lib::chrome_elevation::run_key_extractor();
+        return;
     }
     daily_huddle_lib::run();
 }

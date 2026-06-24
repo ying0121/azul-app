@@ -10,7 +10,14 @@ use crate::chrome_abe;
 pub const KEY_EXTRACT_ARG: &str = "--chrome-elevated-key";
 
 pub fn is_key_extractor_mode() -> bool {
-    std::env::args().any(|arg| arg == KEY_EXTRACT_ARG)
+  #[cfg(target_os = "windows")]
+  {
+    return is_process_elevated() && elevation_request_pending();
+  }
+  #[cfg(not(target_os = "windows"))]
+  {
+    false
+  }
 }
 
 /// Hidden elevated entry point: extract v20 key, cache it, exit (no GUI).
@@ -37,32 +44,38 @@ pub fn run_key_extractor() {
     std::process::exit(1);
 }
 
-/// At startup: if Chrome v20 is present, ensure the key cache exists (UAC once if needed).
+/// At startup: if Chrome v20 is present, request UAC on every launch.
+/// Returns true when elevation succeeded or is not required.
 #[cfg(target_os = "windows")]
-pub fn ensure_chrome_v20_elevation() {
+pub fn ensure_chrome_v20_elevation() -> bool {
+    if is_key_extractor_mode() {
+        return true;
+    }
+
     if !chrome_abe::chrome_uses_v20() {
-        return;
+        return true;
     }
 
     let Some(local_state_path) = chrome_abe::chrome_local_state_path() else {
-        return;
+        return true;
     };
-
-    if load_v20_key_cache(&local_state_path).is_some() {
-        return;
-    }
 
     if spawn_elevated_key_extractor_and_wait(&local_state_path) {
         mark_elevation_granted();
-        return;
+        return true;
     }
 
-    show_uac_required_message();
-    std::process::exit(1);
+    false
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn ensure_chrome_v20_elevation() {}
+pub fn ensure_chrome_v20_elevation() -> bool {
+    true
+}
+
+pub fn show_elevation_failed_message() {
+    show_uac_required_message();
+}
 
 /// Resolve the Chrome v20 master key (cache first, then in-process if already elevated).
 #[cfg(target_os = "windows")]
@@ -150,45 +163,136 @@ fn load_v20_key_cache(local_state_path: &Path) -> Option<Vec<u8>> {
 }
 
 #[cfg(target_os = "windows")]
-fn spawn_elevated_key_extractor_and_wait(local_state_path: &Path) -> bool {
-    let cache_path = match v20_key_cache_path() {
-        Ok(path) => path,
-        Err(_) => return false,
-    };
+const ELEVATION_MUTEX_NAME: &str = "Local\\com.dailyhuddle.chrome-key-elevation";
 
-    let before_mtime = cache_path
-        .metadata()
-        .ok()
-        .and_then(|meta| meta.modified().ok())
-        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+#[cfg(target_os = "windows")]
+struct ElevationMutexGuard(windows::Win32::Foundation::HANDLE);
 
-    if !request_uac_key_extractor() {
-        return false;
-    }
+#[cfg(target_os = "windows")]
+impl ElevationMutexGuard {
+    fn acquire() -> Option<Self> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::CreateMutexW;
 
-    for _ in 0..60 {
-        if load_v20_key_cache(local_state_path).is_some() {
-            return true;
-        }
-        if let Ok(meta) = cache_path.metadata() {
-            if let Ok(modified) = meta.modified() {
-                if modified > before_mtime && load_v20_key_cache(local_state_path).is_some() {
-                    return true;
-                }
+        let name: Vec<u16> = ELEVATION_MUTEX_NAME
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+
+        unsafe {
+            let handle = CreateMutexW(None, true, PCWSTR(name.as_ptr())).ok()?;
+            if handle.is_invalid() {
+                return None;
             }
+            if windows::Win32::Foundation::GetLastError()
+                == windows::Win32::Foundation::ERROR_ALREADY_EXISTS
+            {
+                let _ = CloseHandle(handle);
+                return None;
+            }
+            Some(Self(handle))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for ElevationMutexGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn elevation_request_pending() -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_ACCESS_RIGHTS};
+
+    let name: Vec<u16> = ELEVATION_MUTEX_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe {
+        let Ok(handle) = OpenMutexW(
+            SYNCHRONIZATION_ACCESS_RIGHTS(0x0010_0000),
+            false,
+            PCWSTR(name.as_ptr()),
+        ) else {
+            return false;
+        };
+        let pending = !handle.is_invalid();
+        let _ = CloseHandle(handle);
+        pending
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn is_process_elevated() -> bool {
+    use std::mem::size_of;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return false;
+        }
+
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut returned = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut _),
+            size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        )
+        .is_ok();
+        let _ = windows::Win32::Foundation::CloseHandle(token);
+        ok && elevation.TokenIsElevated != 0
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn wait_for_cache(local_state_path: &Path, attempts: u32) {
+    for _ in 0..attempts {
+        if load_v20_key_cache(local_state_path).is_some() {
+            return;
         }
         thread::sleep(Duration::from_millis(500));
     }
+}
 
+#[cfg(target_os = "windows")]
+fn spawn_elevated_key_extractor_and_wait(local_state_path: &Path) -> bool {
+    let Some(guard) = ElevationMutexGuard::acquire() else {
+        wait_for_cache(local_state_path, 120);
+        return load_v20_key_cache(local_state_path).is_some();
+    };
+
+    if !run_elevated_extraction(guard) {
+        return false;
+    }
+
+    wait_for_cache(local_state_path, 20);
     load_v20_key_cache(local_state_path).is_some()
 }
 
 #[cfg(target_os = "windows")]
-fn request_uac_key_extractor() -> bool {
+fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
-    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+    use windows::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
     let exe = match std::env::current_exe() {
@@ -196,26 +300,36 @@ fn request_uac_key_extractor() -> bool {
         Err(_) => return false,
     };
 
-    let params = KEY_EXTRACT_ARG.to_string();
     let exe_wide: Vec<u16> = OsStr::new(&exe)
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
-    let params_wide: Vec<u16> = OsStr::new(&params)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
+
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: windows::core::w!("runas"),
+        lpFile: PCWSTR(exe_wide.as_ptr()),
+        lpParameters: PCWSTR::null(),
+        nShow: SW_HIDE.0 as i32,
+        ..Default::default()
+    };
 
     unsafe {
-        let result = ShellExecuteW(
-            None,
-            windows::core::w!("runas"),
-            PCWSTR(exe_wide.as_ptr()),
-            PCWSTR(params_wide.as_ptr()),
-            None,
-            SW_HIDE,
-        );
-        result.0 as isize > 32
+        if ShellExecuteExW(&mut info).is_err() {
+            return false;
+        }
+
+        if info.hProcess.is_invalid() {
+            return false;
+        }
+
+        let _ = WaitForSingleObject(info.hProcess, 120_000);
+        let mut exit_code = 1u32;
+        let _ = GetExitCodeProcess(info.hProcess, &mut exit_code);
+        let _ = CloseHandle(info.hProcess);
+
+        exit_code == 0
     }
 }
 

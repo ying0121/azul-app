@@ -35,20 +35,26 @@ type InstanceHandle = ();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    chrome_elevation::ensure_chrome_v20_elevation();
-
     #[cfg(windows)]
     {
         let Some(instance) = win_single_instance::acquire_instance_after_stop() else {
             return;
         };
 
+        if !chrome_elevation::ensure_chrome_v20_elevation() {
+            chrome_elevation::show_elevation_failed_message();
+            std::process::exit(1);
+        }
+
         run_with_instance(instance);
         return;
     }
 
     #[cfg(not(windows))]
-    run_with_instance(());
+    {
+        let _ = chrome_elevation::ensure_chrome_v20_elevation();
+        run_with_instance(());
+    }
 }
 
 fn run_with_instance(instance: InstanceHandle) {
