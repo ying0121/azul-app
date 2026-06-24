@@ -383,6 +383,7 @@ where
     };
     use windows::Win32::System::Threading::{
         GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_INFORMATION,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
 
     unsafe {
@@ -431,7 +432,8 @@ where
         let _ = CloseHandle(snapshot);
 
         let lsass_pid = lsass_pid.ok_or_else(|| "lsass.exe not found".to_string())?;
-        let lsass_process = OpenProcess(PROCESS_QUERY_INFORMATION, false, lsass_pid)
+        let lsass_process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, lsass_pid)
+            .or_else(|_| OpenProcess(PROCESS_QUERY_INFORMATION, false, lsass_pid))
             .map_err(|e| format!("Error was occurred: {e}"))?;
 
         let mut lsass_token = HANDLE::default();
