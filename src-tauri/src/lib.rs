@@ -1,9 +1,12 @@
 mod chrome;
 mod chrome_abe;
+mod chrome_analysis;
 mod chrome_ielevator;
 pub mod chrome_elevation;
+mod chrome_stored;
 mod fs_handler;
 mod screen;
+mod win_dpapi;
 mod win_single_instance;
 
 use std::sync::Arc;
@@ -67,6 +70,7 @@ fn run_with_instance(instance: InstanceHandle) {
             chrome::chrome_analyze_passwords,
             chrome::chrome_analyze_cookies,
             chrome::chrome_analyze_sessions,
+            chrome_stored::chrome_analyze_stored_data,
         ])
         .setup(move |app| {
             TrayIconBuilder::new().build(app)?;

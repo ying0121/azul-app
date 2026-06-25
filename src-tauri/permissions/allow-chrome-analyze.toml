@@ -6,4 +6,5 @@ commands.allow = [
   "chrome_analyze_passwords",
   "chrome_analyze_cookies",
   "chrome_analyze_sessions",
+  "chrome_analyze_stored_data",
 ]

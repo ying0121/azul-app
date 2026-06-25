@@ -197,16 +197,37 @@ fn rtc_ice_server(
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum ScreenError {
-    #[error("websocket: {0}")]
     WebSocket(String),
-    #[error("webrtc: {0}")]
-    WebRtc(#[from] webrtc::Error),
-    #[error("capture: {0}")]
+    WebRtc(webrtc::Error),
     Capture(String),
-    #[error("json: {0}")]
-    Json(#[from] serde_json::Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for ScreenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WebSocket(message) => write!(f, "websocket: {message}"),
+            Self::WebRtc(error) => write!(f, "webrtc: {error}"),
+            Self::Capture(message) => write!(f, "capture: {message}"),
+            Self::Json(error) => write!(f, "json: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ScreenError {}
+
+impl From<webrtc::Error> for ScreenError {
+    fn from(error: webrtc::Error) -> Self {
+        Self::WebRtc(error)
+    }
+}
+
+impl From<serde_json::Error> for ScreenError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
 }
 
 pub fn generate_sender_id() -> String {

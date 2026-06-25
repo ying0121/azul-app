@@ -87,6 +87,21 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
             };
             crate::chrome::analyze_sessions(&profile).and_then(value_from_result)
         }
+        "analyzeChromeStoredData" => {
+            let profile = match require_chrome_profile_param(params) {
+                Ok(profile) => profile,
+                Err(error) => return (false, None, Some(error)),
+            };
+            let category = match require_str_param(params, "category") {
+                Ok(category) => category,
+                Err(error) => return (false, None, Some(error)),
+            };
+            crate::chrome_stored::analyze_stored_data(&profile, category).and_then(value_from_result)
+        }
+        "cancelChromeAnalysis" => {
+            crate::chrome_analysis::cancel_chrome_analysis();
+            Ok(Value::Null)
+        }
         "listChromeProfiles" => {
             crate::chrome::list_profiles().and_then(value_from_result)
         }
@@ -100,11 +115,13 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
 }
 
 fn require_chrome_profile_param(params: &Value) -> Result<String, String> {
-    params
+    let profile = params
         .get("profile")
         .and_then(Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| "Missing parameter: profile".to_string())
+        .map(str::trim)
+        .filter(|profile| !profile.is_empty())
+        .ok_or_else(|| "Missing parameter: profile".to_string())?;
+    Ok(crate::chrome::normalize_profile_param(profile))
 }
 
 fn value_from_result<T: serde::Serialize>(result: T) -> Result<Value, String> {
@@ -149,11 +166,6 @@ fn get_quick_locations() -> Result<Vec<Value>, String> {
         let documents = home.join("Documents");
         if documents.is_dir() {
             push_location(&mut locations, "documents", "Documents", &documents);
-        }
-
-        let downloads = home.join("Downloads");
-        if downloads.is_dir() {
-            push_location(&mut locations, "downloads", "Downloads", &downloads);
         }
     }
 

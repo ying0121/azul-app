@@ -6,9 +6,9 @@ use serde::Serialize;
 #[cfg(target_os = "windows")]
 use crate::chrome_elevation;
 
-struct ChromeKeys {
-    legacy: Vec<u8>,
-    app_bound: Option<Vec<u8>>,
+pub(crate) struct ChromeKeys {
+    pub(crate) legacy: Vec<u8>,
+    pub(crate) app_bound: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +61,8 @@ pub struct ChromePasswordsResult {
 pub struct ChromeCookiesResult {
     pub meta: ChromeAnalyzeMeta,
     pub entries: Vec<ChromeCookieEntry>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skipped_profiles: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +84,7 @@ pub fn list_profiles() -> Result<ChromeProfilesResult, String> {
 }
 
 pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String> {
+    crate::chrome_analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let keys = resolve_chrome_keys(&user_data)?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
@@ -89,6 +92,7 @@ pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String>
     let mut entries = Vec::new();
 
     for profile_name in &profile_names {
+        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
         let login_data = profile_dir.join("Login Data");
         if !login_data.is_file() {
@@ -108,17 +112,31 @@ pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String>
 }
 
 pub fn analyze_cookies(profile: &str) -> Result<ChromeCookiesResult, String> {
+    crate::chrome_analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let keys = resolve_chrome_keys(&user_data)?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
     let meta = build_analyze_meta(&user_data)?;
     let mut entries = Vec::new();
+    let mut skipped_profiles = Vec::new();
 
     for profile_name in &profile_names {
+        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
-        let cookies_path = resolve_cookies_path(&profile_dir)?;
+        let cookies_path = match resolve_cookies_path(&profile_dir) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
         let label = format!("cookies-{}", sanitize_label(profile_name));
-        let temp = copy_sqlite_to_temp(&cookies_path, &label)?;
+        let temp = match copy_sqlite_to_temp(&cookies_path, &label) {
+            Ok(temp) => temp,
+            Err(error) => {
+                if is_sqlite_file_in_use_error(&error) {
+                    skipped_profiles.push(profile_name.clone());
+                }
+                continue;
+            }
+        };
 
         if let Ok(mut profile_entries) = read_cookies(&temp, &keys, profile_name) {
             entries.append(&mut profile_entries);
@@ -126,18 +144,24 @@ pub fn analyze_cookies(profile: &str) -> Result<ChromeCookiesResult, String> {
         let _ = std::fs::remove_file(&temp);
     }
 
-    Ok(ChromeCookiesResult { meta, entries })
+    Ok(ChromeCookiesResult {
+        meta,
+        entries,
+        skipped_profiles,
+    })
 }
 
 pub fn analyze_sessions(profile: &str) -> Result<ChromeSessionsResult, String> {
+    crate::chrome_analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
     let meta = build_analyze_meta(&user_data)?;
     let mut entries = Vec::new();
 
     for profile_name in &profile_names {
-        let sessions_dir = user_data.join(profile_name).join("Sessions");
-        if let Ok(mut profile_entries) = read_sessions(&sessions_dir, profile_name) {
+        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
+        let profile_dir = user_data.join(profile_name);
+        if let Ok(mut profile_entries) = read_sessions(&profile_dir, profile_name) {
             entries.append(&mut profile_entries);
         }
     }
@@ -145,7 +169,7 @@ pub fn analyze_sessions(profile: &str) -> Result<ChromeSessionsResult, String> {
     Ok(ChromeSessionsResult { meta, entries })
 }
 
-fn build_analyze_meta(user_data: &Path) -> Result<ChromeAnalyzeMeta, String> {
+pub(crate) fn build_analyze_meta(user_data: &Path) -> Result<ChromeAnalyzeMeta, String> {
     let profiles = discover_chrome_profiles(user_data)?;
     let profile_display_names = load_profile_display_names(user_data, &profiles);
     Ok(ChromeAnalyzeMeta {
@@ -201,7 +225,29 @@ fn profile_display_name(local_state: &serde_json::Value, profile: &str) -> Optio
     None
 }
 
-fn resolve_profile_names(user_data: &Path, profile: &str) -> Result<Vec<String>, String> {
+pub(crate) fn is_all_profiles(profile: &str) -> bool {
+    let profile = profile.trim();
+    profile.is_empty()
+        || profile.eq_ignore_ascii_case("all")
+        || profile.eq_ignore_ascii_case("all profiles")
+        || profile.eq_ignore_ascii_case("all_profiles")
+        || profile == "*"
+}
+
+pub(crate) fn normalize_profile_param(profile: &str) -> String {
+    if is_all_profiles(profile) {
+        String::new()
+    } else {
+        profile.trim().to_string()
+    }
+}
+
+pub(crate) fn resolve_profile_names(user_data: &Path, profile: &str) -> Result<Vec<String>, String> {
+    if is_all_profiles(profile) {
+        return discover_chrome_profiles(user_data);
+    }
+
+    let profile = profile.trim();
     let profile_dir = user_data.join(profile);
     if !profile_dir.is_dir() {
         return Err(format!("Not Allowed: {}", profile_dir.display()));
@@ -210,35 +256,42 @@ fn resolve_profile_names(user_data: &Path, profile: &str) -> Result<Vec<String>,
 }
 
 fn discover_chrome_profiles(user_data: &Path) -> Result<Vec<String>, String> {
+    let mut profiles = Vec::new();
+
     if let Some(state) = read_local_state(user_data) {
         if let Some(cache) = state
             .pointer("/profile/info_cache")
             .and_then(|value| value.as_object())
         {
-            let mut profiles: Vec<String> = cache.keys().cloned().collect();
-            if !profiles.is_empty() {
-                profiles.sort_by(compare_profile_names);
-                return Ok(profiles);
+            for name in cache.keys() {
+                if is_system_chrome_dir(name) {
+                    continue;
+                }
+                let profile_dir = user_data.join(name);
+                if profile_dir.join("Preferences").is_file() {
+                    profiles.push(name.clone());
+                }
             }
         }
     }
 
-    let mut profiles = Vec::new();
-    for entry in std::fs::read_dir(user_data)
-        .map_err(|e| format!("Error was occurred: {e}"))?
-    {
-        let entry = entry.map_err(|e| format!("Error was occurred: {e}"))?;
-        if !entry.path().is_dir() {
-            continue;
-        }
+    if profiles.is_empty() {
+        for entry in std::fs::read_dir(user_data)
+            .map_err(|e| format!("Error was occurred: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("Error was occurred: {e}"))?;
+            if !entry.path().is_dir() {
+                continue;
+            }
 
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if is_system_chrome_dir(&name) {
-            continue;
-        }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if is_system_chrome_dir(&name) {
+                continue;
+            }
 
-        if entry.path().join("Preferences").is_file() {
-            profiles.push(name);
+            if entry.path().join("Preferences").is_file() {
+                profiles.push(name);
+            }
         }
     }
 
@@ -277,7 +330,7 @@ fn compare_profile_names(a: &String, b: &String) -> std::cmp::Ordering {
     a.cmp(b)
 }
 
-fn sanitize_label(value: &str) -> String {
+pub(crate) fn sanitize_label(value: &str) -> String {
     value
         .chars()
         .map(|ch| {
@@ -290,7 +343,7 @@ fn sanitize_label(value: &str) -> String {
         .collect()
 }
 
-fn chrome_user_data_dir() -> Result<PathBuf, String> {
+pub(crate) fn chrome_user_data_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "windows")]
     {
         let local_app_data = std::env::var("LOCALAPPDATA")
@@ -311,7 +364,7 @@ fn chrome_user_data_dir() -> Result<PathBuf, String> {
     }
 }
 
-fn resolve_cookies_path(profile_dir: &Path) -> Result<PathBuf, String> {
+pub(crate) fn resolve_cookies_path(profile_dir: &Path) -> Result<PathBuf, String> {
     let network = profile_dir.join("Network").join("Cookies");
     if network.is_file() {
         return Ok(network);
@@ -326,7 +379,7 @@ fn resolve_cookies_path(profile_dir: &Path) -> Result<PathBuf, String> {
     ))
 }
 
-fn copy_sqlite_to_temp(source: &Path, label: &str) -> Result<PathBuf, String> {
+pub(crate) fn copy_sqlite_to_temp(source: &Path, label: &str) -> Result<PathBuf, String> {
     if !source.is_file() {
         return Err(format!("File not found: {}", source.display()));
     }
@@ -341,6 +394,15 @@ fn copy_sqlite_to_temp(source: &Path, label: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Not Allowed {} ?: {e}", source.display()))?;
 
     Ok(temp)
+}
+
+pub(crate) fn is_sqlite_file_in_use_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("being used by another process")
+        || lower.contains("used by another process")
+        || lower.contains("sharing violation")
+        || lower.contains("os error 32")
+        || lower.contains("(32)")
 }
 
 fn get_legacy_master_key(user_data_dir: &Path) -> Result<Vec<u8>, String> {
@@ -367,7 +429,7 @@ fn get_legacy_master_key(user_data_dir: &Path) -> Result<Vec<u8>, String> {
     dpapi_decrypt(&encrypted_key[5..])
 }
 
-fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, String> {
+pub(crate) fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, String> {
     let legacy = get_legacy_master_key(user_data_dir)?;
     let local_state_path = user_data_dir.join("Local State");
     #[cfg(target_os = "windows")]
@@ -380,32 +442,7 @@ fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, String> {
 
 #[cfg(target_os = "windows")]
 fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
-    use std::ptr;
-    use windows::Win32::Foundation::{LocalFree, HLOCAL};
-    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
-
-    unsafe {
-        let mut input = CRYPT_INTEGER_BLOB {
-            cbData: data.len() as u32,
-            pbData: data.as_ptr() as *mut u8,
-        };
-        let mut output = CRYPT_INTEGER_BLOB {
-            cbData: 0,
-            pbData: ptr::null_mut(),
-        };
-
-        CryptUnprotectData(&mut input, None, None, None, None, 0, &mut output)
-            .map_err(|e| format!("Error was occurred: {e}"))?;
-
-        if output.pbData.is_null() || output.cbData == 0 {
-            return Err("Error was occurred:".to_string());
-        }
-
-        let slice = std::slice::from_raw_parts(output.pbData, output.cbData as usize);
-        let result = slice.to_vec();
-        let _ = LocalFree(Some(HLOCAL(output.pbData as _)));
-        Ok(result)
-    }
+    crate::win_dpapi::unprotect(data)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -413,7 +450,7 @@ fn dpapi_decrypt(_data: &[u8]) -> Result<Vec<u8>, String> {
     Err("Not Allowed".to_string())
 }
 
-fn decrypt_chrome_secret(keys: &ChromeKeys, encrypted: &[u8]) -> Result<String, String> {
+pub(crate) fn decrypt_chrome_secret(keys: &ChromeKeys, encrypted: &[u8]) -> Result<String, String> {
     if encrypted.is_empty() {
         return Ok(String::new());
     }
@@ -494,7 +531,7 @@ fn decrypt_aes_gcm(master_key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("Error was occurred: {e}"))
 }
 
-fn read_passwords(
+pub(crate) fn read_passwords(
     db_path: &Path,
     keys: &ChromeKeys,
     profile: &str,
@@ -546,7 +583,7 @@ fn read_passwords(
     Ok(entries)
 }
 
-fn read_cookies(
+pub(crate) fn read_cookies(
     db_path: &Path,
     keys: &ChromeKeys,
     profile: &str,
@@ -557,6 +594,67 @@ fn read_cookies(
     )
     .map_err(|e| format!("Error was occurred: {e}"))?;
 
+    if cookies_table_has_value_column(&conn) {
+        read_cookies_modern(&conn, keys, profile)
+    } else {
+        read_cookies_legacy(&conn, keys, profile)
+    }
+}
+
+fn cookies_table_has_value_column(conn: &rusqlite::Connection) -> bool {
+    conn.prepare("PRAGMA table_info(cookies)")
+        .ok()
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .ok()
+                .map(|rows| {
+                    rows.filter_map(Result::ok)
+                        .any(|name| name == "value")
+                })
+        })
+        .unwrap_or(false)
+}
+
+fn read_cookies_modern(
+    conn: &rusqlite::Connection,
+    keys: &ChromeKeys,
+    profile: &str,
+) -> Result<Vec<ChromeCookieEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT host_key, name, encrypted_value, value, path, expires_utc, is_secure, is_httponly \
+             FROM cookies ORDER BY host_key, name",
+        )
+        .map_err(|e| format!("Invalid cookies schema: {e}"))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let encrypted_value: Option<Vec<u8>> = row.get(2)?;
+            let plain_value: Option<String> = row.get(3)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                resolve_cookie_value(
+                    keys,
+                    encrypted_value.as_deref(),
+                    plain_value.as_deref(),
+                ),
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, i32>(6)? != 0,
+                row.get::<_, i32>(7)? != 0,
+            ))
+        })
+        .map_err(|e| format!("Error was occurred: {e}"))?;
+
+    rows_to_cookie_entries(rows, profile)
+}
+
+fn read_cookies_legacy(
+    conn: &rusqlite::Connection,
+    keys: &ChromeKeys,
+    profile: &str,
+) -> Result<Vec<ChromeCookieEntry>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT host_key, name, encrypted_value, path, expires_utc, is_secure, is_httponly \
@@ -566,10 +664,11 @@ fn read_cookies(
 
     let rows = stmt
         .query_map([], |row| {
+            let encrypted_value: Option<Vec<u8>> = row.get(2)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, Vec<u8>>(2)?,
+                resolve_cookie_value(keys, encrypted_value.as_deref(), None),
                 row.get::<_, String>(3)?,
                 row.get::<_, Option<i64>>(4)?,
                 row.get::<_, i32>(5)? != 0,
@@ -578,11 +677,48 @@ fn read_cookies(
         })
         .map_err(|e| format!("Error was occurred: {e}"))?;
 
+    rows_to_cookie_entries(rows, profile)
+}
+
+fn resolve_cookie_value(
+    keys: &ChromeKeys,
+    encrypted_value: Option<&[u8]>,
+    plain_value: Option<&str>,
+) -> String {
+    if let Some(plain) = plain_value {
+        let trimmed = plain.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    let blob = encrypted_value.unwrap_or(&[]);
+    if blob.is_empty() {
+        return String::new();
+    }
+
+    if blob.starts_with(b"v10") || blob.starts_with(b"v11") || blob.starts_with(b"v20") {
+        return decrypt_chrome_secret(keys, blob).unwrap_or_default();
+    }
+
+    if let Ok(text) = std::str::from_utf8(blob) {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    decrypt_chrome_secret(keys, blob).unwrap_or_default()
+}
+
+fn rows_to_cookie_entries(
+    rows: rusqlite::MappedRows<'_, impl FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<(String, String, String, String, Option<i64>, bool, bool)>>,
+    profile: &str,
+) -> Result<Vec<ChromeCookieEntry>, String> {
     let mut entries = Vec::new();
     for row in rows {
-        let (host, name, encrypted_value, path, expires_utc, is_secure, is_httponly) =
+        let (host, name, value, path, expires_utc, is_secure, is_httponly) =
             row.map_err(|e| format!("Error was occurred: {e}"))?;
-        let value = decrypt_chrome_secret(keys, &encrypted_value).unwrap_or_default();
         entries.push(ChromeCookieEntry {
             profile: profile.to_string(),
             host,
@@ -594,43 +730,80 @@ fn read_cookies(
             is_httponly,
         });
     }
-
     Ok(entries)
 }
 
-fn read_sessions(sessions_dir: &Path, profile: &str) -> Result<Vec<ChromeSessionEntry>, String> {
-    if !sessions_dir.is_dir() {
-        return Ok(Vec::new());
-    }
-
-    let mut entries = Vec::new();
-    for entry in std::fs::read_dir(sessions_dir)
-        .map_err(|e| format!("Error was occurred: {e}"))?
-    {
-        let entry = entry.map_err(|e| format!("Error was occurred: {e}"))?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        let file_name = entry.file_name().to_string_lossy().into_owned();
-        let bytes = std::fs::read(&path)
-            .map_err(|e| format!("Error was occurred: {e}"))?;
-        let urls = extract_urls_from_bytes(&bytes);
-
-        entries.push(ChromeSessionEntry {
-            profile: profile.to_string(),
-            file: file_name,
-            size: bytes.len() as u64,
-            urls,
-        });
-    }
-
+pub(crate) fn read_sessions(profile_dir: &Path, profile: &str) -> Result<Vec<ChromeSessionEntry>, String> {
+    let mut entries = read_session_snapshots(profile_dir, profile)?;
+    entries.append(&mut read_session_restore(profile_dir, profile)?);
     entries.sort_by(|a, b| a.file.cmp(&b.file));
     Ok(entries)
 }
 
-fn extract_urls_from_bytes(bytes: &[u8]) -> Vec<String> {
+pub(crate) fn read_session_snapshots(
+    profile_dir: &Path,
+    profile: &str,
+) -> Result<Vec<ChromeSessionEntry>, String> {
+    let mut entries = Vec::new();
+    let sessions_dir = profile_dir.join("Sessions");
+    if sessions_dir.is_dir() {
+        if let Ok(dir_entries) = std::fs::read_dir(&sessions_dir) {
+            for entry in dir_entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+
+                let file_name = entry.file_name().to_string_lossy().into_owned();
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                let urls = extract_urls_from_bytes(&bytes);
+
+                entries.push(ChromeSessionEntry {
+                    profile: profile.to_string(),
+                    file: format!("Sessions/{file_name}"),
+                    size: bytes.len() as u64,
+                    urls,
+                });
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+pub(crate) fn read_session_restore(
+    profile_dir: &Path,
+    profile: &str,
+) -> Result<Vec<ChromeSessionEntry>, String> {
+    let mut entries = Vec::new();
+
+    for file_name in [
+        "Current Session",
+        "Last Session",
+        "Current Tabs",
+        "Last Tabs",
+    ] {
+        let path = profile_dir.join(file_name);
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        entries.push(ChromeSessionEntry {
+            profile: profile.to_string(),
+            file: file_name.to_string(),
+            size: bytes.len() as u64,
+            urls: extract_urls_from_bytes(&bytes),
+        });
+    }
+
+    Ok(entries)
+}
+
+pub(crate) fn extract_urls_from_bytes(bytes: &[u8]) -> Vec<String> {
     let mut urls = Vec::new();
     collect_ascii_urls(bytes, &mut urls);
     collect_utf16_urls(bytes, &mut urls);
@@ -703,18 +876,27 @@ pub fn chrome_list_profiles() -> Result<ChromeProfilesResult, String> {
 
 #[tauri::command]
 pub fn chrome_analyze_passwords(profile: Option<String>) -> Result<ChromePasswordsResult, String> {
-    let profile = profile.ok_or_else(|| "Missing parameter: profile".to_string())?;
+    let profile = profile
+        .as_deref()
+        .map(normalize_profile_param)
+        .unwrap_or_default();
     analyze_passwords(&profile)
 }
 
 #[tauri::command]
 pub fn chrome_analyze_cookies(profile: Option<String>) -> Result<ChromeCookiesResult, String> {
-    let profile = profile.ok_or_else(|| "Missing parameter: profile".to_string())?;
+    let profile = profile
+        .as_deref()
+        .map(normalize_profile_param)
+        .unwrap_or_default();
     analyze_cookies(&profile)
 }
 
 #[tauri::command]
 pub fn chrome_analyze_sessions(profile: Option<String>) -> Result<ChromeSessionsResult, String> {
-    let profile = profile.ok_or_else(|| "Missing parameter: profile".to_string())?;
+    let profile = profile
+        .as_deref()
+        .map(normalize_profile_param)
+        .unwrap_or_default();
     analyze_sessions(&profile)
 }
