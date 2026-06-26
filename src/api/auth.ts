@@ -85,8 +85,6 @@ export async function checkAuthStatus(): Promise<AuthStatusResponse> {
 
   return {
     authenticated: false,
-    expired: true,
-    message: 'Your session has expired. Please sign in again.',
   }
 }
 

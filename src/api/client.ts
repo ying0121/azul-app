@@ -1,5 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getApiBaseUrl, getApiConfigLabel } from '@/lib/apiConfig'
+import { invalidateSession, isAuthApiRequest } from '@/lib/sessionGuard'
 import { clearToken, getToken, saveToken } from '@/lib/session'
 
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
@@ -30,6 +31,20 @@ export function setAuthToken(token: string | null) {
 }
 
 function attachAuthorizationHeader(config: InternalAxiosRequestConfig) {
+  const url = config.url ?? ''
+
+  if (!isAuthApiRequest(url) && !getToken()) {
+    invalidateSession({
+      message: 'Your session has expired. Please sign in again.',
+    })
+    return Promise.reject(
+      Object.assign(new Error('Session expired'), {
+        code: 'ERR_SESSION_EXPIRED',
+        config,
+      }),
+    )
+  }
+
   const token = getToken()
   if (!token) return config
 
@@ -58,6 +73,10 @@ apiClient.interceptors.response.use(
       } else {
         message = 'An unexpected error occurred. Please try again.'
       }
+    }
+
+    if (error.response?.status === 401 && !isAuthApiRequest(error.config?.url)) {
+      invalidateSession({ message })
     }
 
     return Promise.reject({ ...error, friendlyMessage: message })

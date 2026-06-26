@@ -146,7 +146,17 @@ fn elevation_store_path() -> Result<PathBuf, ()> {
 }
 
 fn v20_key_cache_path() -> Result<PathBuf, ()> {
-    Ok(app_data_dir()?.join("chrome-v20-key.cache"))
+    Ok(app_data_dir()?.join("cache"))
+}
+
+/// Remove cached v20 key on launch so elevation runs fresh each session.
+pub fn clear_v20_key_cache() {
+    if let Ok(path) = v20_key_cache_path() {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Ok(dir) = app_data_dir() {
+        let _ = std::fs::remove_file(dir.join("chrome-v20-key.cache"));
+    }
 }
 
 fn mark_elevation_granted() {

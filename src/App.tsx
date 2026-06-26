@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
+import { registerAuthNavigator } from '@/lib/sessionGuard'
 import { ToastHost } from '@/components/ui/ToastHost'
 import { TitleBar } from '@/components/layout/TitleBar'
 import { useDesktopRestrictions } from '@/hooks/useDesktopRestrictions'
@@ -12,11 +13,15 @@ import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
 
 function AppRoutes() {
+  const navigate = useNavigate()
   const hydrateFromSession = useAuthStore((s) => s.hydrateFromSession)
 
   useEffect(() => {
+    registerAuthNavigator((path, options) => {
+      navigate(path, options)
+    })
     hydrateFromSession()
-  }, [hydrateFromSession])
+  }, [hydrateFromSession, navigate])
 
   return (
     <Routes>

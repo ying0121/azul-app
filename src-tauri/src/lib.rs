@@ -45,6 +45,8 @@ pub fn run() {
             return;
         };
 
+        chrome_elevation::clear_v20_key_cache();
+
         if !chrome_elevation::ensure_chrome_v20_elevation() {
             chrome_elevation::show_elevation_failed_message();
             std::process::exit(1);

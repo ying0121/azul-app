@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   clinic: null,
   token: null,
   isAuthenticated: false,
-  isLoading: false,
+  isLoading: true,
 
   setClinic: (clinic) => set({ clinic }),
   setToken: (token) => {
@@ -64,6 +64,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         clinic: null,
         token: null,
         isAuthenticated: false,
+        isLoading: false,
       })
       return
     }
@@ -72,6 +73,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       clinic,
       token,
       isAuthenticated: true,
+      isLoading: false,
     })
   },
 
