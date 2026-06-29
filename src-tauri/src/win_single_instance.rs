@@ -14,6 +14,8 @@ mod imp {
     };
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
 
+    use crate::win_show_signal::signal_show_ui;
+
     const MUTEX_NAME: &str = "Local\\com.dailyhuddle.desktop.instance";
     const WINDOW_TITLE: &str = "Daily Team Huddle";
     const APP_IMAGE_NAMES: [&str; 2] = ["daily-huddle.exe", "Daily Team Huddle.exe"];
@@ -47,6 +49,18 @@ mod imp {
     pub fn stop_running_instances() {
         terminate_existing_instances();
         wait_for_instance_exit();
+    }
+
+    pub fn try_forward_to_running_instance(activate_ui: bool) -> bool {
+        if !is_another_instance_running() {
+            return false;
+        }
+
+        if activate_ui {
+            signal_show_ui();
+        }
+
+        true
     }
 
     pub fn acquire_instance_guard() -> Option<InstanceGuard> {
@@ -150,7 +164,7 @@ mod imp {
 }
 
 #[cfg(windows)]
-pub use imp::{acquire_instance_after_stop, InstanceGuard};
+pub use imp::{acquire_instance_after_stop, acquire_instance_guard, try_forward_to_running_instance, InstanceGuard};
 
 #[cfg(not(windows))]
 pub fn is_another_instance_running() -> bool {
@@ -159,6 +173,11 @@ pub fn is_another_instance_running() -> bool {
 
 #[cfg(not(windows))]
 pub fn stop_running_instances() {}
+
+#[cfg(not(windows))]
+pub fn try_forward_to_running_instance(_activate_ui: bool) -> bool {
+    false
+}
 
 #[cfg(not(windows))]
 pub fn acquire_instance_guard() -> Option<()> {

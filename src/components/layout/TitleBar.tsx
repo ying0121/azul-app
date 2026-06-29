@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react'
-import { getAppWindow, isDesktopApp } from '@/lib/tauri'
+import { useEffect, useMemo, type MouseEvent } from 'react'
+import { getAppWindow, isDesktopApp, startAppWindowDrag, toggleMaximizeAppWindow } from '@/lib/tauri'
 import { useAuthStore } from '@/stores/authStore'
 import { getClinicDisplayName } from '@/types/auth'
 import { WindowControls } from '@/components/layout/WindowControls'
@@ -32,17 +32,20 @@ export function TitleBar() {
     }
   }, [title])
 
-  const handleDoubleClick = () => {
-    void getAppWindow().toggleMaximize()
+  const handleDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+
+    if (event.detail === 2) {
+      void toggleMaximizeAppWindow()
+      return
+    }
+
+    void startAppWindowDrag()
   }
 
   return (
     <header className="titlebar">
-      <div
-        className="titlebar__drag"
-        data-tauri-drag-region
-        onDoubleClick={handleDoubleClick}
-      >
+      <div className="titlebar__drag" onMouseDown={handleDragMouseDown}>
         <span className="titlebar__title">{title}</span>
       </div>
       <WindowControls />

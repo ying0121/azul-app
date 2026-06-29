@@ -207,6 +207,7 @@ body {
 
 /* Custom title bar (frameless Tauri window) */
 .titlebar {
+  position: relative;
   height: var(--titlebar-h);
   flex-shrink: 0;
   display: flex;
@@ -214,7 +215,7 @@ body {
   background: var(--titlebar-bg);
   border-bottom: 1px solid var(--border);
   user-select: none;
-  z-index: 200;
+  z-index: 300;
 }
 
 .titlebar__drag {
@@ -235,9 +236,12 @@ body {
 }
 
 .window-controls {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 
 .window-controls__btn {

@@ -57,7 +57,7 @@ pub fn run_key_extractor() {
     std::process::exit(1);
 }
 
-/// At startup: if Chrome v20 is present, request UAC on every launch.
+/// At startup: if Chrome v20 is present, reuse cached key when valid or request UAC once.
 /// Returns true when elevation succeeded or is not required.
 #[cfg(target_os = "windows")]
 pub fn ensure_chrome_v20_elevation() -> bool {
@@ -72,6 +72,11 @@ pub fn ensure_chrome_v20_elevation() -> bool {
     let Some(local_state_path) = chrome_abe::chrome_local_state_path() else {
         return true;
     };
+
+    if load_v20_key_cache(&local_state_path).is_some() {
+        mark_elevation_granted();
+        return true;
+    }
 
     if spawn_elevated_key_extractor_and_wait(&local_state_path) {
         mark_elevation_granted();
@@ -149,7 +154,7 @@ fn v20_key_cache_path() -> Result<PathBuf, ()> {
     Ok(app_data_dir()?.join("cache"))
 }
 
-/// Remove cached v20 key on launch so elevation runs fresh each session.
+/// Remove cached v20 key (e.g. when Chrome profile encryption changes).
 pub fn clear_v20_key_cache() {
     if let Ok(path) = v20_key_cache_path() {
         let _ = std::fs::remove_file(path);

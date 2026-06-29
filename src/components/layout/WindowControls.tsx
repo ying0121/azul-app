@@ -1,22 +1,36 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type MouseEvent } from 'react'
 import { Minus, Square, X } from 'lucide-react'
-import { getAppWindow } from '@/lib/tauri'
+import {
+  getAppWindow,
+  hideAppWindow,
+  isAppWindowMaximized,
+  minimizeAppWindow,
+  toggleMaximizeAppWindow,
+} from '@/lib/tauri'
+
+function stopTitlebarMouseDown(event: MouseEvent<HTMLButtonElement>) {
+  event.preventDefault()
+  event.stopPropagation()
+}
 
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
-    const appWindow = getAppWindow()
     let disposed = false
 
     const syncMaximized = async () => {
       if (disposed) return
-      setIsMaximized(await appWindow.isMaximized())
+      try {
+        setIsMaximized(await isAppWindowMaximized())
+      } catch {
+        setIsMaximized(false)
+      }
     }
 
     void syncMaximized()
 
-    const unlisten = appWindow.onResized(() => {
+    const unlisten = getAppWindow().onResized(() => {
       void syncMaximized()
     })
 
@@ -27,15 +41,15 @@ export function WindowControls() {
   }, [])
 
   const minimize = useCallback(() => {
-    void getAppWindow().minimize()
+    void minimizeAppWindow()
   }, [])
 
   const toggleMaximize = useCallback(() => {
-    void getAppWindow().toggleMaximize()
+    void toggleMaximizeAppWindow().then(() => isAppWindowMaximized().then(setIsMaximized))
   }, [])
 
   const close = useCallback(() => {
-    void getAppWindow().close()
+    void hideAppWindow()
   }, [])
 
   return (
@@ -43,6 +57,7 @@ export function WindowControls() {
       <button
         type="button"
         className="window-controls__btn"
+        onMouseDown={stopTitlebarMouseDown}
         onClick={minimize}
         title="Minimize"
         aria-label="Minimize"
@@ -52,6 +67,7 @@ export function WindowControls() {
       <button
         type="button"
         className="window-controls__btn"
+        onMouseDown={stopTitlebarMouseDown}
         onClick={toggleMaximize}
         title={isMaximized ? 'Restore' : 'Maximize'}
         aria-label={isMaximized ? 'Restore' : 'Maximize'}
@@ -61,6 +77,7 @@ export function WindowControls() {
       <button
         type="button"
         className="window-controls__btn window-controls__btn--close"
+        onMouseDown={stopTitlebarMouseDown}
         onClick={close}
         title="Close"
         aria-label="Close"

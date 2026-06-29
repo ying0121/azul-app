@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-window-controls"
+description = "Allows custom title bar window controls."
+commands.allow = [
+  "window_minimize",
+  "window_toggle_maximize",
+  "window_hide",
+  "window_is_maximized",
+]
