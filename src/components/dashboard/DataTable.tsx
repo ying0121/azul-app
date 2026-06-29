@@ -102,7 +102,7 @@ export function DataTable({
         cell: ({ row }) => getRowApptDate(row.original) || '—',
       },
       {
-        header: 'PCP Name',
+        header: 'PCP',
         id: 'pcp_name',
         accessorFn: (row) => getRowPcpName(row),
         cell: ({ row }) => getRowPcpName(row.original) || '—',
@@ -134,7 +134,7 @@ export function DataTable({
           isHedisRow(row.original) ? '—' : getRowRefillDue(row.original) || '—',
       },
       {
-        header: 'Coverage Ends',
+        header: 'COV END',
         id: 'coverage_ends',
         accessorFn: (row) => getRowCoverageEnds(row),
         cell: ({ row }) =>

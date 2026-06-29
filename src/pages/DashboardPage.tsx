@@ -15,7 +15,7 @@ import { TableToolbar } from '@/components/dashboard/TableToolbar'
 import { useAlertStore } from '@/stores/alertStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useStatusColorStore } from '@/stores/statusColorStore'
-import { getClinicDisplayName, getClinicId } from '@/types/auth'
+import { getClinicAcronym, getClinicDisplayName, getClinicId } from '@/types/auth'
 import {
   ALL_INSURANCES_ID,
   ALL_INSURANCES_OPTION,
@@ -323,6 +323,7 @@ export function DashboardPage() {
     try {
       const preview = await prepareDailyVisitEmail({
         clinicId,
+        clinicAcronym: getClinicAcronym(clinic),
         insId: selectedInsuranceId,
         qpId: selectedQualityProgramId,
         clinicName: getClinicDisplayName(clinic),

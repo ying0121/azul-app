@@ -28,8 +28,40 @@ interface SendDailyEmailApiResponse {
   message?: string
 }
 
+interface TokenizationApiResponse {
+  status: string
+  tokenization?: number
+  message?: string
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+export async function fetchTokenization(clinicId: string | number): Promise<number> {
+  if (USE_MOCK) {
+    await delay(200)
+    return 42
+  }
+
+  const { data } = await apiClient.post<TokenizationApiResponse>('/daily-huddle/tokenizaton', {
+    clinic_id: clinicId,
+  })
+
+  if (
+    !isRecord(data) ||
+    data.status !== 'success' ||
+    typeof data.tokenization !== 'number' ||
+    !Number.isFinite(data.tokenization)
+  ) {
+    throw new Error(
+      isRecord(data) && typeof data.message === 'string' && data.message.trim()
+        ? data.message.trim()
+        : 'Unable to fetch clinic tokenization.',
+    )
+  }
+
+  return data.tokenization
 }
 
 export async function fetchTodayVisitPatients(
@@ -58,7 +90,7 @@ export function buildDailyEmailPayload(
     clinic_id: clinicId,
     ins_id: insId,
     qp_id: qpId,
-    token: context.huddleToken,
+    token: String(context.tokenization),
     subject: buildDailyVisitEmailSubject({ ...context, reportDate }),
     html: buildDailyVisitEmailHtml({ ...context, reportDate }),
     text: buildDailyVisitEmailText({ ...context, reportDate }),
@@ -83,6 +115,7 @@ export interface DailyEmailPreviewData {
 
 export async function prepareDailyVisitEmail(options: {
   clinicId: string | number
+  clinicAcronym: string
   insId: string
   qpId: string
   clinicName: string
@@ -90,19 +123,23 @@ export async function prepareDailyVisitEmail(options: {
   qualityProgramName: string
   statusMap: HedisStatusMap
 }): Promise<DailyEmailPreviewData> {
-  const { rows, token } = await fetchTodayVisitPatients({
-    clinic_id: options.clinicId,
-    ins_id: options.insId,
-    qp_id: options.qpId,
-  })
+  const [{ rows }, tokenization] = await Promise.all([
+    fetchTodayVisitPatients({
+      clinic_id: options.clinicId,
+      ins_id: options.insId,
+      qp_id: options.qpId,
+    }),
+    fetchTokenization(options.clinicId),
+  ])
 
   const reportDate = getTodayReportDateLabel()
   const context: DailyVisitEmailContext = {
     clinicName: options.clinicName,
+    clinicAcronym: options.clinicAcronym,
     reportDate,
     insuranceName: options.insuranceName,
     qualityProgramName: options.qualityProgramName,
-    huddleToken: token,
+    tokenization,
     rows,
     statusMap: options.statusMap,
   }

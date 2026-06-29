@@ -1,16 +1,24 @@
 import { getClinicTodayDateString } from '@/lib/clinicDate'
 import { formatUsDate } from '@/lib/formatDate'
-import { getRowApptDate, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
+import {
+  getRowApptDate,
+  getRowCoverageEnds,
+  getRowDos,
+  getRowRefillDue,
+  getRowValue1,
+  getRowValue2,
+} from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 import type { HedisStatusMap } from '@/types/statusColor'
 import { resolveRowStatusStyle } from '@/types/statusColor'
 
 export interface DailyVisitEmailContext {
   clinicName: string
+  clinicAcronym: string
   reportDate: string
   insuranceName: string
   qualityProgramName: string
-  huddleToken: string
+  tokenization: number
   rows: PatientRow[]
   statusMap: HedisStatusMap
 }
@@ -32,10 +40,19 @@ function getDoctorName(row: PatientRow): string {
   return `${row.pcp_fname} ${row.pcp_lname}`.trim()
 }
 
-function getTokenMid(huddleToken: string, row: PatientRow): string {
-  const mid = row.pt_subno?.trim() ?? ''
-  if (!huddleToken && !mid) return '—'
-  return `${huddleToken}${mid}`
+function getPatientIdentifier(
+  clinicAcronym: string,
+  tokenization: number,
+  row: PatientRow,
+): string {
+  const emrId = row.pt_emr_id?.trim() ?? ''
+  const tokenPart = Number.isFinite(tokenization) ? String(tokenization) : ''
+  if (!clinicAcronym && !emrId && !tokenPart) return '—'
+  return `${clinicAcronym}${emrId}${tokenPart}`
+}
+
+function displayCell(value: string): string {
+  return value.trim() ? value : '—'
 }
 
 function buildSummary(rows: PatientRow[]) {
@@ -46,13 +63,14 @@ function buildSummary(rows: PatientRow[]) {
 
 function buildTableRows(
   rows: PatientRow[],
-  huddleToken: string,
+  clinicAcronym: string,
+  tokenization: number,
   statusMap: HedisStatusMap,
 ): string {
   if (rows.length === 0) {
     return `
       <tr>
-        <td colspan="7" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
+        <td colspan="10" style="padding:28px 16px;text-align:center;color:#64748b;font-size:14px;">
           No visits scheduled for today.
         </td>
       </tr>
@@ -64,16 +82,21 @@ function buildTableRows(
       const rowStyle = resolveRowStatusStyle(statusMap, row.details)
       const backgroundColor = rowStyle.backgroundColor || (index % 2 === 0 ? '#ffffff' : '#f8fafc')
       const textColor = rowStyle.color || '#0f172a'
+      const cellStyle =
+        'padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;'
 
       return `
         <tr style="background-color:${backgroundColor};color:${textColor};">
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:600;">${escapeHtml(getTokenMid(huddleToken, row))}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.ins_name || row.ins_id || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(row.measure || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getDoctorName(row) || '—')}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getApptDate(row))}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getRowValue1(row))}</td>
-          <td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(getRowValue2(row))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(row.ins_name || row.ins_id || ''))}</td>
+          <td style="${cellStyle}font-weight:600;">${escapeHtml(getPatientIdentifier(clinicAcronym, tokenization, row))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(row.measure || ''))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getDoctorName(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getApptDate(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getRowDos(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getRowValue1(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getRowValue2(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getRowRefillDue(row)))}</td>
+          <td style="${cellStyle}">${escapeHtml(displayCell(getRowCoverageEnds(row)))}</td>
         </tr>
       `
     })
@@ -87,15 +110,16 @@ export function buildDailyVisitEmailSubject(context: DailyVisitEmailContext): st
 export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): string {
   const {
     clinicName,
+    clinicAcronym,
     reportDate,
     insuranceName,
     qualityProgramName,
-    huddleToken,
+    tokenization,
     rows,
     statusMap,
   } = context
   const summary = buildSummary(rows)
-  const tableRows = buildTableRows(rows, huddleToken, statusMap)
+  const tableRows = buildTableRows(rows, clinicAcronym, tokenization, statusMap)
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -166,16 +190,19 @@ export function buildDailyVisitEmailHtml(context: DailyVisitEmailContext): strin
                   Daily Visit Table
                 </div>
                 <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px;">
-                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;min-width:640px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;min-width:960px;">
                     <thead>
                       <tr style="background-color:#f1f5f9;">
-                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Patient</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Insurance</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Patient</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Measure</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Doctor</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Appt Date</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">DOS</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Value 1</th>
                         <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Value 2</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Refill Due</th>
+                        <th align="left" style="padding:12px 14px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #dbe3f0;">Coverage</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -217,7 +244,7 @@ export function buildDailyVisitEmailText(context: DailyVisitEmailContext): strin
     `Quality Program: ${context.qualityProgramName || '—'}`,
     '',
     'Daily Visit Table',
-    'Patient | Insurance | Measure | Doctor | Appt Date | Value 1 | Value 2',
+    'Insurance | Patient | Measure | Doctor | Appt Date | DOS | Value 1 | Value 2 | Refill Due | Coverage',
   ]
 
   if (context.rows.length === 0) {
@@ -226,13 +253,16 @@ export function buildDailyVisitEmailText(context: DailyVisitEmailContext): strin
     context.rows.forEach((row) => {
       lines.push(
         [
-          getTokenMid(context.huddleToken, row),
-          row.ins_name || row.ins_id || '—',
-          row.measure || '—',
-          getDoctorName(row) || '—',
-          getApptDate(row),
-          getRowValue1(row),
-          getRowValue2(row),
+          displayCell(row.ins_name || row.ins_id || ''),
+          getPatientIdentifier(context.clinicAcronym, context.tokenization, row),
+          displayCell(row.measure || ''),
+          displayCell(getDoctorName(row)),
+          displayCell(getApptDate(row)),
+          displayCell(getRowDos(row)),
+          displayCell(getRowValue1(row)),
+          displayCell(getRowValue2(row)),
+          displayCell(getRowRefillDue(row)),
+          displayCell(getRowCoverageEnds(row)),
         ].join(' | '),
       )
     })
