@@ -1,4 +1,5 @@
 import { formatUsDate } from '@/lib/formatDate'
+import { formatPhoneDisplay } from '@/lib/formatPhone'
 import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowPcpName, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import type { PatientRow } from '@/types/patient'
 
@@ -37,7 +38,7 @@ function rowToCells(row: PatientRow): string[] {
     row.qp_name || row.qp_id || '',
     `${row.pt_fname} ${row.pt_lname}`.trim(),
     row.pt_subno || '',
-    row.pt_phone || '',
+    formatPhoneDisplay(row.pt_phone),
     formatUsDate(row.pt_dob) || '',
     row.measure || '',
     apptDate,

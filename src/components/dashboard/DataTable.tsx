@@ -10,10 +10,11 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { motion } from 'framer-motion'
-import { Eye, Pill, Stethoscope } from 'lucide-react'
+import { Eye } from 'lucide-react'
 import type { PatientRow } from '@/types/patient'
 import { getPatientRowId, isHedisRow } from '@/types/patient'
 import { formatUsDate } from '@/lib/formatDate'
+import { formatPhoneDisplay } from '@/lib/formatPhone'
 import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowPcpName, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
 import { useStatusColorStore } from '@/stores/statusColorStore'
@@ -27,16 +28,6 @@ interface DataTableProps {
   globalFilter: string
   sourceFilter: SourceFilterState
   isLoading?: boolean
-}
-
-function SourceBadge({ source }: { source: PatientRow['source'] }) {
-  const isHedis = source === 'hedis'
-  return (
-    <span className={`type-badge type-badge--${source}`}>
-      {isHedis ? <Stethoscope size={14} /> : <Pill size={14} />}
-      {isHedis ? 'HEDIS' : 'Med Adh'}
-    </span>
-  )
 }
 
 export function DataTable({
@@ -56,23 +47,14 @@ export function DataTable({
   const columns = useMemo<ColumnDef<PatientRow>[]>(
     () => [
       {
-        id: 'source',
-        header: 'Source',
-        accessorKey: 'source',
-        cell: ({ getValue }) => (
-          <SourceBadge source={getValue() as PatientRow['source']} />
-        ),
-        size: 110,
-      },
-      {
         header: 'Insurance',
         accessorKey: 'ins_name',
         cell: ({ row }) => row.original.ins_name || row.original.ins_id || '—',
       },
       {
-        header: 'Quality Program',
-        accessorKey: 'qp_name',
-        cell: ({ row }) => row.original.qp_name || row.original.qp_id || '—',
+        header: 'MID',
+        accessorKey: 'pt_subno',
+        cell: ({ row }) => row.original.pt_subno || '—',
       },
       {
         header: 'Patient Name',
@@ -84,11 +66,15 @@ export function DataTable({
         ),
       },
       {
-        header: 'MID',
-        accessorKey: 'pt_subno',
-        cell: ({ row }) => row.original.pt_subno || '—',
+        header: 'Quality Program',
+        accessorKey: 'qp_name',
+        cell: ({ row }) => row.original.qp_name || row.original.qp_id || '—',
       },
-      { header: 'Phone', accessorKey: 'pt_phone' },
+      {
+        header: 'Phone',
+        accessorKey: 'pt_phone',
+        cell: ({ row }) => formatPhoneDisplay(row.original.pt_phone) || '—',
+      },
       {
         header: 'DOB',
         accessorKey: 'pt_dob',

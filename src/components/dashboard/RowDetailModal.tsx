@@ -1,11 +1,11 @@
 import { Modal } from '@/components/ui/Modal'
 import { formatDetailValue, formatUsDate } from '@/lib/formatDate'
+import { formatPhoneDisplay, formatPhoneDetailValue, formatPhoneTelHref, PHONE_DETAIL_KEYS } from '@/lib/formatPhone'
 import { useStatusColorStore } from '@/stores/statusColorStore'
 import type { HedisDetails, MedAdhDetails, PatientRow } from '@/types/patient'
 import { isHedisRow } from '@/types/patient'
 import { HEDIS_STATUS_DETAIL_KEYS, lookupHedisStatus } from '@/types/statusColor'
 import {
-  Calendar,
   ClipboardList,
   Mail,
   Phone,
@@ -249,6 +249,12 @@ function DetailGroup({
               label={labels[key] ?? key}
               value={detailRecord[key]}
             />
+          ) : PHONE_DETAIL_KEYS.has(key) ? (
+            <DetailField
+              key={key}
+              label={labels[key] ?? key}
+              value={formatPhoneDetailValue(detailRecord[key])}
+            />
           ) : (
             <DetailField
               key={key}
@@ -286,7 +292,41 @@ export function RowDetailModal({ row, onClose }: RowDetailModalProps) {
                   {isHedis ? <Stethoscope size={14} /> : <Pill size={14} />}
                   {typeLabel}
                 </span>
+                <span className="detail-hero__program">
+                  <span className="detail-hero__program-label">Insurance</span>
+                  <span className="detail-hero__program-value">
+                    {row.ins_name || row.ins_id || '—'}
+                  </span>
+                </span>
+                <span className="detail-hero__program">
+                  <span className="detail-hero__program-label">Quality Program</span>
+                  <span className="detail-hero__program-value">
+                    {row.qp_name || row.qp_id || '—'}
+                  </span>
+                </span>
               </div>
+              {(row.pt_phone || row.pt_other_phone || row.pt_email) && (
+                <div className="detail-hero__contact">
+                  {row.pt_phone && (
+                    <a className="detail-contact-chip" href={formatPhoneTelHref(row.pt_phone)}>
+                      <Phone size={14} />
+                      {formatPhoneDisplay(row.pt_phone)}
+                    </a>
+                  )}
+                  {row.pt_other_phone && (
+                    <a className="detail-contact-chip" href={formatPhoneTelHref(row.pt_other_phone)}>
+                      <Phone size={14} />
+                      {formatPhoneDisplay(row.pt_other_phone)}
+                    </a>
+                  )}
+                  {row.pt_email && (
+                    <a className="detail-contact-chip" href={`mailto:${row.pt_email}`}>
+                      <Mail size={14} />
+                      {row.pt_email}
+                    </a>
+                  )}
+                </div>
+              )}
               <p className="detail-hero__meta">
                 <span>MID {row.pt_subno || '—'}</span>
                 <span className="detail-hero__dot" aria-hidden>
@@ -329,7 +369,7 @@ export function RowDetailModal({ row, onClose }: RowDetailModalProps) {
         </section>
 
         <div className="detail-panels">
-          <section className="detail-panel">
+          <section className="detail-panel detail-panel--wide">
             <h3 className="detail-panel__title">
               <User size={16} />
               Patient & Contact
@@ -341,39 +381,6 @@ export function RowDetailModal({ row, onClose }: RowDetailModalProps) {
               <DetailField label="DOB" value={formatUsDate(row.pt_dob)} />
               <DetailField label="Gender" value={row.pt_gender} />
               <DetailField label="Language" value={row.pt_lang} />
-            </dl>
-            <div className="detail-contact-chips">
-              {row.pt_phone && (
-                <a className="detail-contact-chip" href={`tel:${row.pt_phone}`}>
-                  <Phone size={14} />
-                  {row.pt_phone}
-                </a>
-              )}
-              {row.pt_other_phone && (
-                <a className="detail-contact-chip" href={`tel:${row.pt_other_phone}`}>
-                  <Phone size={14} />
-                  {row.pt_other_phone}
-                </a>
-              )}
-              {row.pt_email && (
-                <a className="detail-contact-chip" href={`mailto:${row.pt_email}`}>
-                  <Mail size={14} />
-                  {row.pt_email}
-                </a>
-              )}
-            </div>
-          </section>
-
-          <section className="detail-panel">
-            <h3 className="detail-panel__title">
-              <Calendar size={16} />
-              Coverage & Record
-            </h3>
-            <dl className="detail-grid">
-              <DetailField label="Insurance" value={row.ins_name || row.ins_id} />
-              <DetailField label="Quality Program" value={row.qp_name || row.qp_id} />
-              <DetailField label="Measure" value={row.measure} />
-              <DetailField label="DOS" value={formatUsDate(row.dos)} />
             </dl>
           </section>
         </div>
