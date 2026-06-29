@@ -1,4 +1,5 @@
 mod chrome;
+mod clipboard;
 mod chrome_abe;
 mod chrome_analysis;
 mod chrome_ielevator;

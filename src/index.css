@@ -1443,6 +1443,10 @@ input {
   background: #fff;
 }
 
+.email-preview-modal__html {
+  overflow: auto;
+}
+
 .email-preview-modal__empty {
   display: flex;
   align-items: center;

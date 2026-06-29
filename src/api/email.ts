@@ -38,22 +38,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number(trimmed)
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  return null
+}
+
+function parseTokenizationResponse(data: unknown): number | null {
+  if (!isRecord(data) || data.status !== 'success') return null
+
+  const direct = readFiniteNumber(data.tokenization ?? data.Tokenization)
+  if (direct != null) return direct
+
+  const nested = data.data ?? data.Data
+  if (isRecord(nested)) {
+    return readFiniteNumber(nested.tokenization ?? nested.Tokenization)
+  }
+
+  return null
+}
+
 export async function fetchTokenization(clinicId: string | number): Promise<number> {
   if (USE_MOCK) {
     await delay(200)
     return 42
   }
 
-  const { data } = await apiClient.post<TokenizationApiResponse>('/daily-huddle/tokenizaton', {
+  const { data } = await apiClient.post<TokenizationApiResponse>('/daily-huddle/tokenization', {
     clinic_id: clinicId,
   })
 
-  if (
-    !isRecord(data) ||
-    data.status !== 'success' ||
-    typeof data.tokenization !== 'number' ||
-    !Number.isFinite(data.tokenization)
-  ) {
+  const tokenization = parseTokenizationResponse(data)
+  if (tokenization == null) {
     throw new Error(
       isRecord(data) && typeof data.message === 'string' && data.message.trim()
         ? data.message.trim()
@@ -61,7 +84,7 @@ export async function fetchTokenization(clinicId: string | number): Promise<numb
     )
   }
 
-  return data.tokenization
+  return tokenization
 }
 
 export async function fetchTodayVisitPatients(

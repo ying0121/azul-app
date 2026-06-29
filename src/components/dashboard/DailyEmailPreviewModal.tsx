@@ -61,11 +61,11 @@ export function DailyEmailPreviewModal({
 
             <div className="email-preview-modal__frame-wrap">
               {payload?.html ? (
-                <iframe
-                  className="email-preview-modal__frame"
-                  title="Daily visit email preview"
-                  srcDoc={payload.html}
-                  sandbox=""
+                <div
+                  className="email-preview-modal__frame email-preview-modal__html"
+                  role="document"
+                  aria-label="Daily visit email preview"
+                  dangerouslySetInnerHTML={{ __html: payload.html }}
                 />
               ) : (
                 <div className="email-preview-modal__empty">No preview available.</div>

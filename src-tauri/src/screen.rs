@@ -527,6 +527,36 @@ impl ScreenSender {
             .resume_stream_if_needed(&out_for_reader)
             .await;
 
+        let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
+        let _clipboard_watcher = crate::clipboard::start_watcher(clip_tx);
+        let out_for_clip = out_tx.clone();
+        let sender_id_for_clip = self.config.sender_id.clone();
+        let clip_bridge = tokio::spawn(async move {
+            while let Some(event) = clip_rx.recv().await {
+                let mut payload = serde_json::json!({
+                    "type": "clip-event",
+                    "from": sender_id_for_clip,
+                    "to": "receiver",
+                    "action": event.action,
+                    "large": event.large,
+                    "ts": chrono_timestamp_ms(),
+                });
+                if event.large {
+                    payload["sizeBytes"] = Value::Number(event.size_bytes.into());
+                } else {
+                    if let Some(text) = event.text {
+                        payload["text"] = Value::String(text);
+                    }
+                    if let Some(html) = event.html {
+                        payload["html"] = Value::String(html);
+                    }
+                }
+                if out_for_clip.send(payload).is_err() {
+                    break;
+                }
+            }
+        });
+
         loop {
             if self.closed.load(Ordering::SeqCst) {
                 let _ = out_for_reader.send(serde_json::json!({
@@ -567,6 +597,8 @@ impl ScreenSender {
         heartbeat_handle.abort();
         reader_handle.abort();
         writer.abort();
+        clip_bridge.abort();
+        drop(_clipboard_watcher);
         // Signaling dropped — keep the media session alive; resume after reconnect.
         Ok(())
     }
