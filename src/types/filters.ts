@@ -23,6 +23,13 @@ export interface PcpOption {
   pcp_name: string
 }
 
+export interface MeasureOption {
+  measure_id: string
+  measure: string
+}
+
+export const ALL_MEASURES_PLACEHOLDER = 'All Measures'
+
 export const ALL_INSURANCES_OPTION: InsuranceOption = {
   ins_id: ALL_INSURANCES_ID,
   ins_name: 'All Insurances',
@@ -52,6 +59,7 @@ export interface PatientFilters {
   pcp_id?: string
   cyear?: string | number
   filter?: string
+  measures?: string
   appt_start?: string
   appt_end?: string
 }
@@ -65,6 +73,28 @@ export interface SourceFilterState {
   all: boolean
   hedis: boolean
   med_adh: boolean
+}
+
+export interface SavedDashboardFilters {
+  insuranceId: string
+  qualityProgramId: string
+  pcpId: string
+  measureIds: string[]
+  sourceFilter: SourceFilterState
+  apptFilter: ApptFilterState
+}
+
+export function matchesMeasureFilter(measureId: string, selectedIds: string[]): boolean {
+  if (selectedIds.length === 0) return true
+  return selectedIds.includes(measureId)
+}
+
+export function isDefaultMeasureFilter(selectedIds: string[]): boolean {
+  return selectedIds.length === 0
+}
+
+export function formatMeasuresParam(selectedIds: string[]): string {
+  return selectedIds.filter(Boolean).join(',')
 }
 
 export const DEFAULT_SOURCE_FILTER: SourceFilterState = {
@@ -155,4 +185,68 @@ export function resolveApptRange(state: ApptFilterState): {
 
 export function getCurrentYear(): number {
   return getClinicYear()
+}
+
+export function formatApptFilterLabel(state: ApptFilterState): string {
+  if (state.preset === 'custom') {
+    const end = state.customEndDate || getTodayDateString()
+    return `Custom (${getTodayDateString()} – ${end})`
+  }
+  return APPT_FILTER_OPTIONS.find((option) => option.value === state.preset)?.label ?? 'Today'
+}
+
+export function formatSourceFilterLabel(filter: SourceFilterState): string {
+  if (filter.all) return 'All Sources'
+  const parts: string[] = []
+  if (filter.hedis) parts.push('HEDIS')
+  if (filter.med_adh) parts.push('Med Adh')
+  return parts.length > 0 ? parts.join(', ') : 'All Sources'
+}
+
+export function formatMeasureFilterLabel(
+  selectedIds: string[],
+  options: MeasureOption[],
+): string {
+  if (selectedIds.length === 0) return ALL_MEASURES_PLACEHOLDER
+  const labels = selectedIds
+    .map((id) => options.find((option) => option.measure_id === id)?.measure ?? id)
+    .filter(Boolean)
+  return labels.length > 0 ? labels.join(', ') : ALL_MEASURES_PLACEHOLDER
+}
+
+export function formatFilterStatusLabel(input: {
+  insuranceName: string
+  qualityProgramName: string
+  pcpName: string
+  measureLabel: string
+  sourceLabel: string
+  apptLabel: string
+}): string {
+  return [
+    input.insuranceName,
+    input.qualityProgramName,
+    input.pcpName,
+    input.measureLabel,
+    input.sourceLabel,
+    input.apptLabel,
+  ].join(' · ')
+}
+
+export function hasNonDefaultFilters(input: {
+  insuranceId: string
+  qualityProgramId: string
+  pcpId: string
+  measureIds: string[]
+  sourceFilter: SourceFilterState
+  apptFilter: ApptFilterState
+}): boolean {
+  return (
+    input.insuranceId !== ALL_INSURANCES_ID ||
+    input.qualityProgramId !== ALL_QUALITY_PROGRAM_ID ||
+    input.pcpId !== ALL_PCPS_ID ||
+    !isDefaultMeasureFilter(input.measureIds) ||
+    !isDefaultSourceFilter(input.sourceFilter) ||
+    input.apptFilter.preset !== DEFAULT_APPT_FILTER.preset ||
+    (input.apptFilter.preset === 'custom' && input.apptFilter.customEndDate !== '')
+  )
 }

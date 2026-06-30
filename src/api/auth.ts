@@ -1,4 +1,5 @@
 import { apiClient, USE_MOCK } from './client'
+import { retryAsync } from '@/lib/retryAsync'
 import { mockAuth } from './mock'
 import { getClinic, getToken } from '@/lib/session'
 import type {
@@ -66,9 +67,11 @@ function parseAuthResponse(data: unknown): AuthResult {
 export async function authenticate(credentials: AuthCredentials): Promise<AuthResult> {
   if (USE_MOCK) return mockAuth.authenticate(credentials)
 
-  const { data } = await apiClient.post<AuthApiResponse>('/daily-huddle/auth', {
-    code: credentials.code.trim(),
-  })
+  const { data } = await retryAsync(() =>
+    apiClient.post<AuthApiResponse>('/daily-huddle/auth', {
+      code: credentials.code.trim(),
+    }),
+  )
 
   return parseAuthResponse(data)
 }

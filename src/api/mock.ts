@@ -50,6 +50,12 @@ export const mockPcpList = [
   { pcp_id: '2', pcp_name: 'Sarah Lee' },
 ]
 
+export const mockMeasureList = [
+  { measure_id: '1', measure: 'HbA1c Control' },
+  { measure_id: '2', measure: 'Medication Adherence' },
+  { measure_id: '3', measure: 'Blood Pressure Control' },
+]
+
 export const mockQualityPrograms: Record<
   string,
   { qp_id: string; qp_name: string }[]
@@ -217,7 +223,7 @@ export const mockPatients: PatientRow[] = [
     ins_name: 'Aetna',
     qp_id: 'QP-01',
     qp_name: 'Quality Program Alpha',
-    measure_id: 'M-HBA1C',
+    measure_id: '1',
     obs_id: 'OBS-H-001',
     measure: 'HbA1c Control',
     pt_fname: 'Maria',
@@ -262,7 +268,7 @@ export const mockPatients: PatientRow[] = [
     ins_name: 'Aetna',
     qp_id: 'QP-01',
     qp_name: 'Quality Program Alpha',
-    measure_id: 'M-PDC',
+    measure_id: '2',
     obs_id: 'OBS-M-001',
     measure: 'Medication Adherence',
     pt_fname: 'Maria',
@@ -331,7 +337,7 @@ export const mockPatients: PatientRow[] = [
     ins_name: 'UnitedHealthcare',
     qp_id: 'QP-02',
     qp_name: 'Quality Program Beta',
-    measure_id: 'M-BP',
+    measure_id: '3',
     obs_id: 'OBS-H-002',
     measure: 'Blood Pressure Control',
     pt_fname: 'James',
@@ -376,7 +382,7 @@ export const mockPatients: PatientRow[] = [
     ins_name: 'UnitedHealthcare',
     qp_id: 'QP-02',
     qp_name: 'Quality Program Beta',
-    measure_id: 'M-PDC',
+    measure_id: '2',
     obs_id: 'OBS-M-002',
     measure: 'Medication Adherence',
     pt_fname: 'James',

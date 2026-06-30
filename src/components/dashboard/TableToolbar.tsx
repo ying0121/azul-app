@@ -1,8 +1,6 @@
 import { motion } from 'framer-motion'
 import { FileSpreadsheet, Filter, Mail, Palette, RefreshCw, Search } from 'lucide-react'
 import clsx from 'clsx'
-import { FilterSelect } from '@/components/ui/FilterSelect'
-import type { InsuranceOption, PcpOption, QualityProgramOption } from '@/types/filters'
 
 interface TableToolbarProps {
   title: string
@@ -13,22 +11,11 @@ interface TableToolbarProps {
   onExportExcel: () => void
   onSendDailyEmail: () => void
   onOpenStatusColors: () => void
+  filterStatusLabel: string
   hasActiveFilters?: boolean
   isRefreshing?: boolean
   isSendingEmail?: boolean
   totalCount: number
-  insuranceOptions: InsuranceOption[]
-  qualityProgramOptions: QualityProgramOption[]
-  pcpOptions: PcpOption[]
-  selectedInsuranceId: string
-  selectedQualityProgramId: string
-  selectedPcpId: string
-  onInsuranceChange: (insId: string) => void
-  onQualityProgramChange: (qpId: string) => void
-  onPcpChange: (pcpId: string) => void
-  isInsuranceLoading?: boolean
-  isQualityProgramLoading?: boolean
-  isPcpLoading?: boolean
 }
 
 export function TableToolbar({
@@ -40,22 +27,11 @@ export function TableToolbar({
   onExportExcel,
   onSendDailyEmail,
   onOpenStatusColors,
+  filterStatusLabel,
   hasActiveFilters,
   isRefreshing,
   isSendingEmail,
   totalCount,
-  insuranceOptions,
-  qualityProgramOptions,
-  pcpOptions,
-  selectedInsuranceId,
-  selectedQualityProgramId,
-  selectedPcpId,
-  onInsuranceChange,
-  onQualityProgramChange,
-  onPcpChange,
-  isInsuranceLoading,
-  isQualityProgramLoading,
-  isPcpLoading,
 }: TableToolbarProps) {
   return (
     <motion.div
@@ -70,46 +46,19 @@ export function TableToolbar({
       </div>
 
       <div className="table-toolbar__right">
-        <div className="table-toolbar__filters">
-          <FilterSelect
-            value={selectedInsuranceId}
-            onChange={onInsuranceChange}
-            options={insuranceOptions.map((option) => ({
-              value: option.ins_id,
-              label: option.ins_name,
-            }))}
-            placeholder="Insurance"
-            disabled={isInsuranceLoading}
-            loading={isInsuranceLoading}
-            ariaLabel="Filter by insurance"
-          />
-
-          <FilterSelect
-            value={selectedQualityProgramId}
-            onChange={onQualityProgramChange}
-            options={qualityProgramOptions.map((option) => ({
-              value: option.qp_id,
-              label: option.qp_name,
-            }))}
-            placeholder="Quality program"
-            disabled={!selectedInsuranceId || isQualityProgramLoading}
-            loading={isQualityProgramLoading}
-            ariaLabel="Filter by quality program"
-          />
-
-          <FilterSelect
-            value={selectedPcpId}
-            onChange={onPcpChange}
-            options={pcpOptions.map((option) => ({
-              value: option.pcp_id,
-              label: option.pcp_name,
-            }))}
-            placeholder="PCP"
-            disabled={isPcpLoading}
-            loading={isPcpLoading}
-            ariaLabel="Filter by PCP name"
-          />
-        </div>
+        <button
+          type="button"
+          className={clsx(
+            'table-toolbar__filter-status',
+            hasActiveFilters && 'table-toolbar__filter-status--active',
+          )}
+          onClick={onOpenFilters}
+          title={filterStatusLabel}
+          aria-label={`Filters: ${filterStatusLabel}. Click to edit.`}
+        >
+          <Filter size={16} className="table-toolbar__filter-status-icon" />
+          <span className="table-toolbar__filter-status-text">{filterStatusLabel}</span>
+        </button>
 
         <div className="table-toolbar__search">
           <Search size={18} className="table-toolbar__search-icon" />
@@ -151,9 +100,9 @@ export function TableToolbar({
           </button>
           <button
             className={clsx('toolbar-icon-btn', hasActiveFilters && 'toolbar-icon-btn--active')}
-            title="Search filters"
+            title="Edit filters"
             onClick={onOpenFilters}
-            aria-label="Open search filters"
+            aria-label="Open filters"
           >
             <Filter size={18} />
             {hasActiveFilters && <span className="toolbar-icon-btn__dot" />}

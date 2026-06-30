@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -15,7 +15,7 @@ import type { PatientRow } from '@/types/patient'
 import { getPatientRowId, isHedisRow } from '@/types/patient'
 import { formatUsDate } from '@/lib/formatDate'
 import { formatPhoneDisplay } from '@/lib/formatPhone'
-import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowPcpName, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
+import { getRowApptDate, getRowCoverageEnds, getRowDos, getRowMed1, getRowPcpName, getRowRefillDue, getRowValue1, getRowValue2 } from '@/lib/patientRowValues'
 import { filterDisplayedPatients } from '@/lib/patientTableFilter'
 import { useStatusColorStore } from '@/stores/statusColorStore'
 import { type SourceFilterState } from '@/types/filters'
@@ -43,6 +43,14 @@ export function DataTable({
   })
   const [selectedRow, setSelectedRow] = useState<PatientRow | null>(null)
   const hedisStatus = useStatusColorStore((state) => state.hedisStatus)
+  const loadStatusColors = useStatusColorStore((state) => state.loadStatusColors)
+  const isStatusColorsLoaded = useStatusColorStore((state) => state.isLoaded)
+
+  useEffect(() => {
+    if (!isStatusColorsLoaded) {
+      void loadStatusColors()
+    }
+  }, [isStatusColorsLoaded, loadStatusColors])
 
   const columns = useMemo<ColumnDef<PatientRow>[]>(
     () => [
@@ -111,6 +119,13 @@ export function DataTable({
         header: 'DOS',
         accessorKey: 'dos',
         cell: ({ row }) => getRowDos(row.original) || '—',
+      },
+      {
+        header: 'Medication',
+        id: 'med_1',
+        accessorFn: (row) => getRowMed1(row),
+        cell: ({ row }) =>
+          isHedisRow(row.original) ? '—' : getRowMed1(row.original) || '—',
       },
       {
         header: 'Refill Due',
@@ -222,34 +237,37 @@ export function DataTable({
                   </td>
                 </tr>
               ) : (
-                visibleRows.map((row, i) => {
+                visibleRows.map((row) => {
                   const statusStyle = resolveRowStatusStyle(hedisStatus, row.original.details)
                   const hasStatusColor = Boolean(
                     statusStyle.backgroundColor || statusStyle.color,
                   )
+                  const rowStyle = hasStatusColor
+                    ? ({
+                        '--status-row-bg': statusStyle.backgroundColor,
+                        '--status-row-fg': statusStyle.color,
+                      } as CSSProperties)
+                    : undefined
+                  const cellStyle = hasStatusColor
+                    ? {
+                        backgroundColor: statusStyle.backgroundColor,
+                        color: statusStyle.color,
+                      }
+                    : undefined
 
                   return (
-                  <motion.tr
-                    key={`${row.id}-${row.index}`}
-                    className={hasStatusColor ? 'data-table__row--status-colored' : undefined}
-                    style={{
-                      backgroundColor: statusStyle.backgroundColor,
-                      color: statusStyle.color,
-                    }}
-                    title={statusStyle.title}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.25 }}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        style={statusStyle.color ? { color: statusStyle.color } : undefined}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </motion.tr>
+                    <tr
+                      key={`${row.id}-${row.index}`}
+                      className={hasStatusColor ? 'data-table__row--status-colored' : undefined}
+                      style={rowStyle}
+                      title={statusStyle.title}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id} style={cellStyle}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
                   )
                 })
               )}

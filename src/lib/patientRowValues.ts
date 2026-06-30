@@ -36,6 +36,11 @@ export function getRowValue2(row: PatientRow): string {
   return normalizeDisplayValue(row.details.value2)
 }
 
+export function getRowMed1(row: PatientRow): string {
+  if (isHedisRow(row)) return ''
+  return normalizeDisplayValue(row.details.med_1)
+}
+
 export function getRowRefillDue(row: PatientRow): string {
   if (isHedisRow(row)) return ''
   return formatUsDate(row.details.refill_due)

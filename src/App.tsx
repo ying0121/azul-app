@@ -10,11 +10,13 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { PublicRoute } from '@/routes/PublicRoute'
 import { useAuthStore } from '@/stores/authStore'
+import { useStatusColorStore } from '@/stores/statusColorStore'
 import { useThemeStore } from '@/stores/themeStore'
 
 function AppRoutes() {
   const navigate = useNavigate()
   const hydrateFromSession = useAuthStore((s) => s.hydrateFromSession)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   useEffect(() => {
     registerAuthNavigator((path, options) => {
@@ -22,6 +24,11 @@ function AppRoutes() {
     })
     hydrateFromSession()
   }, [hydrateFromSession, navigate])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    void useStatusColorStore.getState().loadStatusColors()
+  }, [isAuthenticated])
 
   return (
     <Routes>

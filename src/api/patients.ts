@@ -1,4 +1,5 @@
 import { apiClient, USE_MOCK } from './client'
+import { retryAsync } from '@/lib/retryAsync'
 import { getClinicYear } from '@/lib/clinicDate'
 import { saveHuddleToken } from '@/lib/session'
 import { mockPatients, mockPcpList } from './mock'
@@ -72,12 +73,12 @@ function mapDetails(
       value2: read('value2', 'Value2'),
       appt_date: read('appt_date', 'ApptDate'),
       appt_pcp: read('appt_pcp', 'ApptPcp'),
-      v_status: read('v_status', 'VStatus'),
+      v_status: read('v_status', 'VStatus') || readItem('v_status', 'VStatus'),
       v_specialty: read('v_specialty', 'VSpecialty', 'vspecialty'),
-      m_status: read('m_status', 'MStatus'),
-      p_status: read('p_status', 'PStatus'),
-      e_status: read('e_status', 'EStatus'),
-      r_status: read('r_status', 'RStatus'),
+      m_status: read('m_status', 'MStatus') || readItem('m_status', 'MStatus'),
+      p_status: read('p_status', 'PStatus') || readItem('p_status', 'PStatus'),
+      e_status: read('e_status', 'EStatus') || readItem('e_status', 'EStatus'),
+      r_status: read('r_status', 'RStatus') || readItem('r_status', 'RStatus'),
       admit_date: read('admit_date', 'AdmitDate'),
       event_date: read('event_date', 'EventDate'),
       discharge_date: read('discharge_date', 'DischargeDate'),
@@ -121,12 +122,12 @@ function mapDetails(
     appt_date: read('appt_date', 'ApptDate') || readItem('appt_date', 'ApptDate'),
     appt_visit: read('appt_visit', 'ApptVisit'),
     event_date: read('event_date', 'EventDate'),
-    v_status: read('v_status', 'VStatus'),
+    v_status: read('v_status', 'VStatus') || readItem('v_status', 'VStatus'),
     v_specialty: read('v_specialty', 'VSpecialty'),
-    m_status: read('m_status', 'MStatus'),
-    p_status: read('p_status', 'PStatus'),
-    e_status: read('e_status', 'EStatus'),
-    r_status: read('r_status', 'RStatus'),
+    m_status: read('m_status', 'MStatus') || readItem('m_status', 'MStatus'),
+    p_status: read('p_status', 'PStatus') || readItem('p_status', 'PStatus'),
+    e_status: read('e_status', 'EStatus') || readItem('e_status', 'EStatus'),
+    r_status: read('r_status', 'RStatus') || readItem('r_status', 'RStatus'),
     rx_name: read('rx_name', 'RxName'),
     rx_cui: read('rx_cui', 'RxCui'),
     rx_med_statue: read('rx_med_statue', 'RxMedStatue', 'rx_med_status'),
@@ -198,6 +199,12 @@ function filterMockPatients(filters: PatientFilters): PatientRow[] {
       const rowPcpName = `${row.pcp_fname} ${row.pcp_lname}`.trim().toLowerCase()
       if (rowPcpName !== selectedPcpName) return false
     }
+    if (filters.measures) {
+      const selectedMeasureIds = filters.measures.split(',').map((id) => id.trim()).filter(Boolean)
+      if (selectedMeasureIds.length > 0 && !selectedMeasureIds.includes(row.measure_id)) {
+        return false
+      }
+    }
     return true
   })
 }
@@ -219,11 +226,14 @@ export async function fetchPatients(
     pcp_id: filters.pcp_id && filters.pcp_id !== '' ? filters.pcp_id : '0',
     cyear: filters.cyear ?? getClinicYear(),
     filter: filters.filter ?? '',
+    measures: filters.measures ?? '',
     appt_start: filters.appt_start ?? '',
     appt_end: filters.appt_end ?? '',
   }
 
-  const { data } = await apiClient.post<PatientsApiResponse>('/daily-huddle/', payload)
+  const { data } = await retryAsync(() =>
+    apiClient.post<PatientsApiResponse>('/daily-huddle/', payload),
+  )
 
   if (!isRecord(data) || data.status !== 'success' || !Array.isArray(data.data)) {
     throw new Error(

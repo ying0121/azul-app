@@ -1,6 +1,7 @@
 import { apiClient, USE_MOCK } from './client'
-import { mockInsurance, mockPcpList, mockQualityPrograms } from './mock'
-import type { InsuranceOption, PcpOption, QualityProgramOption } from '@/types/filters'
+import { retryAsync } from '@/lib/retryAsync'
+import { mockInsurance, mockMeasureList, mockPcpList, mockQualityPrograms } from './mock'
+import type { InsuranceOption, MeasureOption, PcpOption, QualityProgramOption } from '@/types/filters'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -60,6 +61,17 @@ function parsePcpItem(item: unknown): PcpOption | null {
   return { pcp_id, pcp_name }
 }
 
+function parseMeasureItem(item: unknown): MeasureOption | null {
+  if (!isRecord(item)) return null
+
+  const measure_id = readString(item, 'measure_id', 'measureId', 'MeasureId', 'id', 'Id')
+  const measure = readString(item, 'measure', 'Measure', 'measure_name', 'measureName', 'MeasureName')
+
+  if (!measure_id || !measure) return null
+
+  return { measure_id, measure }
+}
+
 export async function fetchInsuranceList(
   clinicId: string | number,
 ): Promise<InsuranceOption[]> {
@@ -68,9 +80,11 @@ export async function fetchInsuranceList(
     return mockInsurance
   }
 
-  const { data } = await apiClient.post<unknown>('/daily-huddle/insurance', {
-    clinic_id: clinicId,
-  })
+  const { data } = await retryAsync(() =>
+    apiClient.post<unknown>('/daily-huddle/insurance', {
+      clinic_id: clinicId,
+    }),
+  )
 
   return unwrapList(data)
     .map(parseInsuranceItem)
@@ -86,10 +100,12 @@ export async function fetchQualityPrograms(
     return mockQualityPrograms[insId] ?? []
   }
 
-  const { data } = await apiClient.post<unknown>('/daily-huddle/quality-program', {
-    clinic_id: clinicId,
-    ins_id: insId,
-  })
+  const { data } = await retryAsync(() =>
+    apiClient.post<unknown>('/daily-huddle/quality-program', {
+      clinic_id: clinicId,
+      ins_id: insId,
+    }),
+  )
 
   return unwrapList(data)
     .map(parseQualityProgramItem)
@@ -102,13 +118,32 @@ export async function fetchPcpList(clinicId: string | number): Promise<PcpOption
     return mockPcpList
   }
 
-  const { data } = await apiClient.post<unknown>('/daily-huddle/pcp', {
-    clinic_id: clinicId,
-  })
+  const { data } = await retryAsync(() =>
+    apiClient.post<unknown>('/daily-huddle/pcp', {
+      clinic_id: clinicId,
+    }),
+  )
 
   return unwrapList(data)
     .map(parsePcpItem)
     .filter((item): item is PcpOption => item != null)
+}
+
+export async function fetchMeasureList(clinicId: string | number): Promise<MeasureOption[]> {
+  if (USE_MOCK) {
+    await delay(250)
+    return mockMeasureList
+  }
+
+  const { data } = await retryAsync(() =>
+    apiClient.post<unknown>('/daily-huddle/measures', {
+      clinic_id: clinicId,
+    }),
+  )
+
+  return unwrapList(data)
+    .map(parseMeasureItem)
+    .filter((item): item is MeasureOption => item != null)
 }
 
 function delay(ms: number) {

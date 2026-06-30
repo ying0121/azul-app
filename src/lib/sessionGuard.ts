@@ -1,7 +1,6 @@
 import { getClinic, getToken } from '@/lib/session'
 import { useAlertStore } from '@/stores/alertStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useStatusColorStore } from '@/stores/statusColorStore'
 
 type NavigateFn = (path: string, options?: { replace?: boolean }) => void
 
@@ -33,7 +32,6 @@ export function invalidateSession(options?: {
   isInvalidating = true
 
   useAuthStore.getState().reset()
-  useStatusColorStore.getState().reset()
 
   if (options?.showAlert !== false) {
     useAlertStore.getState().show(

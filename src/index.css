@@ -1008,6 +1008,54 @@ input {
   flex-wrap: wrap;
 }
 
+.table-toolbar__filter-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 520px);
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.table-toolbar__filter-status:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.table-toolbar__filter-status--active {
+  border-color: rgba(37, 99, 235, 0.35);
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.table-toolbar__filter-status-icon {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.table-toolbar__filter-status-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-modal__select {
+  width: 100%;
+  min-width: 0;
+}
+
 /* Filter select */
 .filter-select {
   position: relative;
@@ -1538,14 +1586,29 @@ input {
 }
 
 .data-table tbody tr {
-  transition: background 0.15s;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.data-table tbody tr:hover {
+.data-table tbody tr:not(.data-table__row--status-colored):hover {
   background: rgba(59, 130, 246, 0.06);
 }
 
-.data-table tbody tr.data-table__row--status-colored:hover {
+.data-table tbody tr.data-table__row--status-colored {
+  background-color: var(--status-row-bg);
+  color: var(--status-row-fg);
+}
+
+.data-table tbody tr.data-table__row--status-colored td {
+  background-color: var(--status-row-bg);
+  color: var(--status-row-fg);
+}
+
+.data-table tbody tr.data-table__row--status-colored .cell-patient__name,
+.data-table tbody tr.data-table__row--status-colored .row-detail-btn {
+  color: inherit;
+}
+
+.data-table tbody tr.data-table__row--status-colored:hover td {
   filter: brightness(0.96);
 }
 

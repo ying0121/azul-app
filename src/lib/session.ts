@@ -5,7 +5,7 @@ const HUDDLE_TOKEN_KEY = 'dh_huddle_token'
 const CLINIC_KEY = 'dh_clinic'
 const SESSION_EXPIRY_KEY = 'dh_session_expires_at'
 
-export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000
+export const SESSION_DURATION_MS = 2 * 60 * 60 * 1000
 
 function storage() {
   return localStorage

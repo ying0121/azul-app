@@ -1,4 +1,5 @@
 import { apiClient, USE_MOCK } from './client'
+import { retryAsync } from '@/lib/retryAsync'
 import { mockStatusColors } from './mock'
 import type {
   HedisStatusMap,
@@ -131,17 +132,19 @@ export async function fetchStatusColors(): Promise<StatusColorData> {
     return buildStatusColorData(mockStatusColors)
   }
 
-  const { data } = await apiClient.get<StatusColorApiResponse>('/daily-huddle/status-color')
+  return retryAsync(async () => {
+    const { data } = await apiClient.get<StatusColorApiResponse>('/daily-huddle/status-color')
 
-  if (!isRecord(data) || data.status !== 'success' || !Array.isArray(data.data)) {
-    throw new Error(
-      isRecord(data) && typeof data.message === 'string'
-        ? data.message
-        : 'Unable to load status colors.',
-    )
-  }
+    if (!isRecord(data) || data.status !== 'success' || !Array.isArray(data.data)) {
+      throw new Error(
+        isRecord(data) && typeof data.message === 'string'
+          ? data.message
+          : 'Unable to load status colors.',
+      )
+    }
 
-  return buildStatusColorData(data.data)
+    return buildStatusColorData(data.data)
+  })
 }
 
 function delay(ms: number) {

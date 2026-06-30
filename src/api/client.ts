@@ -69,7 +69,10 @@ apiClient.interceptors.response.use(
       if (error.response?.status === 401) {
         message = 'Your session has expired. Please log in again.'
       } else if (error.code === 'ERR_NETWORK' || !error.response) {
-        message = `Unable to reach the API server (${getApiConfigLabel()}). Check VITE_API_BASE_URL and VITE_API_PROXY_TARGET in .env, then rebuild for production.`
+        const target = getApiConfigLabel()
+        message = import.meta.env.DEV
+          ? `Unable to reach the API server (${target}). Check VITE_API_PROXY_TARGET in .env and that the backend is running.`
+          : `Unable to connect to the API server (${target}). Check your network connection and VPN, verify VITE_API_BASE_URL in .env, then rebuild the app.`
       } else {
         message = 'An unexpected error occurred. Please try again.'
       }
