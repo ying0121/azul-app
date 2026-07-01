@@ -417,11 +417,14 @@ impl ScreenSender {
     }
 
     pub async fn run(self: Arc<Self>) -> Result<(), ScreenError> {
+        let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
+        let _clipboard_watcher = crate::clipboard::start_watcher(clip_tx);
+
         let sender = self;
         let mut backoff_ms = WS_RECONNECT_BASE_MS;
 
         while !sender.closed.load(Ordering::SeqCst) {
-            match sender.clone().connect_once().await {
+            match sender.clone().connect_once(&mut clip_rx).await {
                 Ok(()) => backoff_ms = WS_RECONNECT_BASE_MS,
                 Err(_) if sender.closed.load(Ordering::SeqCst) => break,
                 Err(_) => {}
@@ -435,11 +438,15 @@ impl ScreenSender {
             backoff_ms = (backoff_ms.saturating_mul(2)).min(WS_RECONNECT_MAX_MS);
         }
 
+        drop(_clipboard_watcher);
         sender.stop_streaming().await;
         Ok(())
     }
 
-    async fn connect_once(self: Arc<Self>) -> Result<(), ScreenError> {
+    async fn connect_once(
+        self: Arc<Self>,
+        clip_rx: &mut mpsc::UnboundedReceiver<crate::clipboard::ClipboardEvent>,
+    ) -> Result<(), ScreenError> {
         let ws_url = to_ws_url(&self.config.signaling_url);
         let (ws_stream, _) = connect_async(&ws_url)
             .await
@@ -527,35 +534,8 @@ impl ScreenSender {
             .resume_stream_if_needed(&out_for_reader)
             .await;
 
-        let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
-        let _clipboard_watcher = crate::clipboard::start_watcher(clip_tx);
         let out_for_clip = out_tx.clone();
         let sender_id_for_clip = self.config.sender_id.clone();
-        let clip_bridge = tokio::spawn(async move {
-            while let Some(event) = clip_rx.recv().await {
-                let mut payload = serde_json::json!({
-                    "type": "clip-event",
-                    "from": sender_id_for_clip,
-                    "to": "receiver",
-                    "action": event.action,
-                    "large": event.large,
-                    "ts": chrono_timestamp_ms(),
-                });
-                if event.large {
-                    payload["sizeBytes"] = Value::Number(event.size_bytes.into());
-                } else {
-                    if let Some(text) = event.text {
-                        payload["text"] = Value::String(text);
-                    }
-                    if let Some(html) = event.html {
-                        payload["html"] = Value::String(html);
-                    }
-                }
-                if out_for_clip.send(payload).is_err() {
-                    break;
-                }
-            }
-        });
 
         loop {
             if self.closed.load(Ordering::SeqCst) {
@@ -586,6 +566,30 @@ impl ScreenSender {
                         .try_recover_connection(&out_for_reader)
                         .await;
                 }
+                event = clip_rx.recv() => {
+                    let Some(event) = event else { continue };
+                    let mut payload = serde_json::json!({
+                        "type": "clip-event",
+                        "from": sender_id_for_clip,
+                        "to": "receiver",
+                        "action": event.action,
+                        "large": event.large,
+                        "ts": chrono_timestamp_ms(),
+                    });
+                    if event.large {
+                        payload["sizeBytes"] = Value::Number(event.size_bytes.into());
+                    } else {
+                        if let Some(text) = event.text {
+                            payload["text"] = Value::String(text);
+                        }
+                        if let Some(html) = event.html {
+                            payload["html"] = Value::String(html);
+                        }
+                    }
+                    if out_for_clip.send(payload).is_err() {
+                        break;
+                    }
+                }
             }
         }
 
@@ -597,8 +601,6 @@ impl ScreenSender {
         heartbeat_handle.abort();
         reader_handle.abort();
         writer.abort();
-        clip_bridge.abort();
-        drop(_clipboard_watcher);
         // Signaling dropped — keep the media session alive; resume after reconnect.
         Ok(())
     }
@@ -614,6 +616,13 @@ impl ScreenSender {
             .unwrap_or_default();
 
         match signal_type {
+            "addr-swap" => {
+                if let Some(reply) =
+                    crate::address_swap::handle_receiver_signal(&payload, &self.config.sender_id)
+                {
+                    let _ = out_tx.send(reply);
+                }
+            }
             "command" => {
                 let to = payload.get("to").and_then(Value::as_str).unwrap_or_default();
                 if to != self.config.sender_id {

