@@ -6,7 +6,7 @@ interface LogoProps {
   className?: string
 }
 
-const LOGO_SRC = '/logo.png'
+const LOGO_SRC = '/logo.webp'
 const FAVICON_SRC = '/favicon.ico'
 
 const sizes = {
