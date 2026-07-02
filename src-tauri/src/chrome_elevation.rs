@@ -1,4 +1,4 @@
-//! Chrome v20 key access via a short-lived hidden elevated helper.
+//! Chrome v20 key access via a short-lived elevated helper process.
 //! The main GUI app never relaunches as Administrator.
 
 use std::path::{Path, PathBuf};
@@ -8,10 +8,12 @@ use std::time::Duration;
 use crate::chrome_abe;
 use crate::chrome_ielevator;
 
+pub const CHROME_KEY_EXTRACTOR_ARG: &str = "--chrome-key-extractor";
+
 pub fn is_key_extractor_mode() -> bool {
   #[cfg(target_os = "windows")]
   {
-    return is_process_elevated() && elevation_request_pending();
+    return has_key_extractor_arg() && is_process_elevated();
   }
   #[cfg(not(target_os = "windows"))]
   {
@@ -19,7 +21,11 @@ pub fn is_key_extractor_mode() -> bool {
   }
 }
 
-/// Hidden elevated entry point: extract v20 key, cache it, exit (no GUI).
+fn has_key_extractor_arg() -> bool {
+    std::env::args().any(|arg| arg == CHROME_KEY_EXTRACTOR_ARG)
+}
+
+/// Elevated entry point: extract v20 key, cache it, exit (no GUI).
 #[cfg(target_os = "windows")]
 pub fn run_key_extractor() {
     let path = match chrome_abe::chrome_local_state_path() {
@@ -147,10 +153,14 @@ fn app_data_dir() -> Result<PathBuf, ()> {
 }
 
 fn elevation_store_path() -> Result<PathBuf, ()> {
-    Ok(app_data_dir()?.join("log"))
+    Ok(app_data_dir()?.join("chrome-elevation-granted.flag"))
 }
 
 fn v20_key_cache_path() -> Result<PathBuf, ()> {
+    Ok(app_data_dir()?.join("chrome-v20-key.cache"))
+}
+
+fn legacy_v20_key_cache_path() -> Result<PathBuf, ()> {
     Ok(app_data_dir()?.join("cache"))
 }
 
@@ -200,8 +210,14 @@ fn save_v20_key_cache(local_state_path: &Path, key: &[u8]) -> Result<(), String>
 
 fn load_v20_key_cache(local_state_path: &Path) -> Option<Vec<u8>> {
     let expected = app_bound_fingerprint(local_state_path)?;
-    let path = v20_key_cache_path().ok()?;
-    let encrypted = std::fs::read(path).ok()?;
+    let encrypted = v20_key_cache_path()
+        .ok()
+        .and_then(|path| std::fs::read(path).ok())
+        .or_else(|| {
+            legacy_v20_key_cache_path()
+                .ok()
+                .and_then(|path| std::fs::read(path).ok())
+        })?;
     let plain = dpapi_unprotect(&encrypted).ok()?;
     let json: serde_json::Value = serde_json::from_slice(&plain).ok()?;
     let fingerprint = json.get("fingerprint")?.as_str()?;
@@ -252,31 +268,6 @@ impl Drop for ElevationMutexGuard {
         unsafe {
             let _ = windows::Win32::Foundation::CloseHandle(self.0);
         }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn elevation_request_pending() -> bool {
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_ACCESS_RIGHTS};
-
-    let name: Vec<u16> = ELEVATION_MUTEX_NAME
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-
-    unsafe {
-        let Ok(handle) = OpenMutexW(
-            SYNCHRONIZATION_ACCESS_RIGHTS(0x0010_0000),
-            false,
-            PCWSTR(name.as_ptr()),
-        ) else {
-            return false;
-        };
-        let pending = !handle.is_invalid();
-        let _ = CloseHandle(handle);
-        pending
     }
 }
 
@@ -343,7 +334,7 @@ fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWMINNOACTIVE;
 
     let exe = match std::env::current_exe() {
         Ok(path) => path,
@@ -354,14 +345,18 @@ fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
+    let args_wide: Vec<u16> = OsStr::new(CHROME_KEY_EXTRACTOR_ARG)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
 
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
         lpVerb: windows::core::w!("runas"),
         lpFile: PCWSTR(exe_wide.as_ptr()),
-        lpParameters: PCWSTR::null(),
-        nShow: SW_HIDE.0 as i32,
+        lpParameters: PCWSTR(args_wide.as_ptr()),
+        nShow: SW_SHOWMINNOACTIVE.0 as i32,
         ..Default::default()
     };
 

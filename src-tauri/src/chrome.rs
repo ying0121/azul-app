@@ -433,7 +433,17 @@ pub(crate) fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, St
     let legacy = get_legacy_master_key(user_data_dir)?;
     let local_state_path = user_data_dir.join("Local State");
     #[cfg(target_os = "windows")]
-    let app_bound = chrome_elevation::get_v20_master_key(&local_state_path);
+    let app_bound = {
+        if crate::chrome_abe::chrome_uses_v20() {
+            if !chrome_elevation::ensure_chrome_v20_elevation() {
+                chrome_elevation::show_elevation_failed_message();
+                return Err(
+                    "Administrator permission is required to read Chrome data.".to_string(),
+                );
+            }
+        }
+        chrome_elevation::get_v20_master_key(&local_state_path)
+    };
     #[cfg(not(target_os = "windows"))]
     let app_bound = None;
 

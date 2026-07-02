@@ -6,6 +6,13 @@ authors = ["Daily Team Huddle"]
 edition = "2021"
 rust-version = "1.77.2"
 
+[package.metadata.winres]
+CompanyName = "Daily Team Huddle"
+ProductName = "Daily Team Huddle"
+FileDescription = "Daily Team Huddle desktop collaboration application"
+LegalCopyright = "Copyright (C) 2026 Daily Team Huddle"
+OriginalFilename = "Daily Team Huddle.exe"
+
 [lib]
 name = "daily_huddle_lib"
 crate-type = ["rlib"]
@@ -53,8 +60,8 @@ windows = { version = "0.62", features = [
 
 [profile.release]
 codegen-units = 1
-lto = "fat"
-opt-level = "z"
-strip = "symbols"
+lto = "thin"
+opt-level = 3
+strip = false
 panic = "abort"
 debug = false

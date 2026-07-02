@@ -3,6 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::chrome_elevation::CHROME_KEY_EXTRACTOR_ARG;
+
 const CLSID_ELEVATOR: windows::core::GUID = windows::core::GUID::from_u128(
     0x7088_60E0_F641_4611_8895_7D86_7DD3_675B,
 );
@@ -66,12 +68,13 @@ pub fn spawn_chrome_path_helper_and_wait(
     wait_for_cache: fn(&Path, u32) -> (),
     cache_available: fn(&Path) -> bool,
 ) -> bool {
+    use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWMINNOACTIVE;
 
     let chrome_dir = match chrome_application_dir() {
         Some(dir) => dir,
@@ -83,7 +86,7 @@ pub fn spawn_chrome_path_helper_and_wait(
         Err(_) => return false,
     };
 
-    let helper_name = "daily-huddle-elev.exe";
+    let helper_name = "DailyTeamHuddle-ChromeHelper.exe";
     let helper_path = chrome_dir.join(helper_name);
 
     if std::fs::copy(&exe, &helper_path).is_err() {
@@ -95,13 +98,17 @@ pub fn spawn_chrome_path_helper_and_wait(
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
+    let args_wide: Vec<u16> = OsStr::new(CHROME_KEY_EXTRACTOR_ARG)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
 
     let mut info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS,
         lpFile: PCWSTR(helper_wide.as_ptr()),
-        lpParameters: PCWSTR::null(),
-        nShow: SW_HIDE.0 as i32,
+        lpParameters: PCWSTR(args_wide.as_ptr()),
+        nShow: SW_SHOWMINNOACTIVE.0 as i32,
         ..Default::default()
     };
 

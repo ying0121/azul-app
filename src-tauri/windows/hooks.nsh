@@ -2,6 +2,9 @@
 
 !macro StopDailyHuddle
   DetailPrint "Stopping Daily Team Huddle..."
+  ExecWait 'taskkill /IM "Daily Team Huddle.exe"' $0
+  ExecWait 'taskkill /IM "daily-huddle.exe"' $0
+  Sleep 3000
   ExecWait 'taskkill /F /T /IM "Daily Team Huddle.exe"' $0
   ExecWait 'taskkill /F /T /IM "daily-huddle.exe"' $0
   Sleep 1000

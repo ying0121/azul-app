@@ -34,6 +34,10 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
+    "publisher": "Daily Team Huddle",
+    "copyright": "Copyright (C) 2026 Daily Team Huddle",
+    "shortDescription": "Daily Team Huddle desktop collaboration application",
+    "longDescription": "Daily Team Huddle is a desktop collaboration application for team meetings, remote support, and workflow management.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,6 +46,20 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "signCommand": {
+        "cmd": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\signtool.exe",
+        "args": [
+          "sign",
+          "/a",
+          "/fd",
+          "SHA256",
+          "/tr",
+          "http://timestamp.digicert.com",
+          "/td",
+          "SHA256",
+          "%1"
+        ]
+      },
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "./windows/hooks.nsh"

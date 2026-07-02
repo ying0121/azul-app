@@ -59,18 +59,12 @@ pub fn run() {
             return;
         };
 
-        if !chrome_elevation::ensure_chrome_v20_elevation() {
-            chrome_elevation::show_elevation_failed_message();
-            std::process::exit(1);
-        }
-
         run_with_instance(instance, launch_mode);
         return;
     }
 
     #[cfg(not(windows))]
     {
-        let _ = chrome_elevation::ensure_chrome_v20_elevation();
         run_with_instance((), launch_mode);
     }
 }
