@@ -10,7 +10,7 @@ use std::sync::{OnceLock, RwLock};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::win_dpapi;
+use crate::platform::dpapi as win_dpapi;
 
 static MANAGER: OnceLock<AddressSwapManager> = OnceLock::new();
 

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::chrome::{
+use super::{
     build_analyze_meta, chrome_user_data_dir, copy_sqlite_to_temp, decrypt_chrome_secret,
     is_sqlite_file_in_use_error, read_cookies, read_passwords, read_session_restore,
     read_session_snapshots, resolve_chrome_keys, resolve_cookies_path, resolve_profile_names,
@@ -267,7 +267,7 @@ fn section_for<T>(
 }
 
 pub fn analyze_stored_data(profile: &str, category: &str) -> Result<ChromeStoredDataResult, String> {
-    crate::chrome_analysis::begin_chrome_analysis();
+    super::analysis::begin_chrome_analysis();
     let category = parse_stored_data_category(category)?;
     let user_data = chrome_user_data_dir()?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
@@ -289,7 +289,7 @@ pub fn analyze_stored_data(profile: &str, category: &str) -> Result<ChromeStored
     let mut account_passwords = Vec::new();
 
     for profile_name in &profile_names {
-        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
+        super::analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
 
         match category {
@@ -1178,6 +1178,6 @@ pub fn chrome_analyze_stored_data(
     profile: String,
     category: String,
 ) -> Result<ChromeStoredDataResult, String> {
-    let profile = crate::chrome::normalize_profile_param(&profile);
+    let profile = super::normalize_profile_param(&profile);
     analyze_stored_data(&profile, &category)
 }

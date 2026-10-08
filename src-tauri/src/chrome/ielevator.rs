@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::chrome_elevation::CHROME_KEY_EXTRACTOR_ARG;
+use super::elevation::CHROME_KEY_EXTRACTOR_ARG;
 
 const CLSID_ELEVATOR: windows::core::GUID = windows::core::GUID::from_u128(
     0x7088_60E0_F641_4611_8895_7D86_7DD3_675B,

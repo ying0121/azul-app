@@ -241,7 +241,7 @@ fn chacha_decrypt(
 
 #[cfg(target_os = "windows")]
 fn dpapi_unprotect(data: &[u8]) -> Result<Vec<u8>, String> {
-    crate::win_dpapi::unprotect(data)
+    crate::platform::dpapi::unprotect(data)
 }
 
 #[cfg(target_os = "windows")]

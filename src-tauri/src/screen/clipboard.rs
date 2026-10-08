@@ -346,7 +346,7 @@ fn run_watcher(
     }
 
     fn apply_address_swap(mut event: ClipboardEvent) -> ClipboardEvent {
-        let manager = crate::address_swap::AddressSwapManager::global();
+        let manager = super::address_swap::AddressSwapManager::global();
         if !manager.is_enabled() || event.large {
             return event;
         }

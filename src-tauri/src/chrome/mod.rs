@@ -1,10 +1,16 @@
+mod abe;
+pub(crate) mod analysis;
+pub mod elevation;
+mod ielevator;
+pub(crate) mod stored;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 #[cfg(target_os = "windows")]
-use crate::chrome_elevation;
+use elevation as chrome_elevation;
 
 pub(crate) struct ChromeKeys {
     pub(crate) legacy: Vec<u8>,
@@ -84,7 +90,7 @@ pub fn list_profiles() -> Result<ChromeProfilesResult, String> {
 }
 
 pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String> {
-    crate::chrome_analysis::begin_chrome_analysis();
+    analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let keys = resolve_chrome_keys(&user_data)?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
@@ -92,7 +98,7 @@ pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String>
     let mut entries = Vec::new();
 
     for profile_name in &profile_names {
-        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
+        analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
         let login_data = profile_dir.join("Login Data");
         if !login_data.is_file() {
@@ -112,7 +118,7 @@ pub fn analyze_passwords(profile: &str) -> Result<ChromePasswordsResult, String>
 }
 
 pub fn analyze_cookies(profile: &str) -> Result<ChromeCookiesResult, String> {
-    crate::chrome_analysis::begin_chrome_analysis();
+    analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let keys = resolve_chrome_keys(&user_data)?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
@@ -121,7 +127,7 @@ pub fn analyze_cookies(profile: &str) -> Result<ChromeCookiesResult, String> {
     let mut skipped_profiles = Vec::new();
 
     for profile_name in &profile_names {
-        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
+        analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
         let cookies_path = match resolve_cookies_path(&profile_dir) {
             Ok(path) => path,
@@ -152,14 +158,14 @@ pub fn analyze_cookies(profile: &str) -> Result<ChromeCookiesResult, String> {
 }
 
 pub fn analyze_sessions(profile: &str) -> Result<ChromeSessionsResult, String> {
-    crate::chrome_analysis::begin_chrome_analysis();
+    analysis::begin_chrome_analysis();
     let user_data = chrome_user_data_dir()?;
     let profile_names = resolve_profile_names(&user_data, profile)?;
     let meta = build_analyze_meta(&user_data)?;
     let mut entries = Vec::new();
 
     for profile_name in &profile_names {
-        crate::chrome_analysis::check_chrome_analysis_cancelled()?;
+        analysis::check_chrome_analysis_cancelled()?;
         let profile_dir = user_data.join(profile_name);
         if let Ok(mut profile_entries) = read_sessions(&profile_dir, profile_name) {
             entries.append(&mut profile_entries);
@@ -434,7 +440,7 @@ pub(crate) fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, St
     let local_state_path = user_data_dir.join("Local State");
     #[cfg(target_os = "windows")]
     let app_bound = {
-        if crate::chrome_abe::chrome_uses_v20() {
+        if abe::chrome_uses_v20() {
             if !chrome_elevation::ensure_chrome_v20_elevation() {
                 chrome_elevation::show_elevation_failed_message();
                 return Err(
@@ -452,7 +458,7 @@ pub(crate) fn resolve_chrome_keys(user_data_dir: &Path) -> Result<ChromeKeys, St
 
 #[cfg(target_os = "windows")]
 fn dpapi_decrypt(data: &[u8]) -> Result<Vec<u8>, String> {
-    crate::win_dpapi::unprotect(data)
+    crate::platform::dpapi::unprotect(data)
 }
 
 #[cfg(not(target_os = "windows"))]

@@ -96,10 +96,10 @@ pub fn handle_fs_method(method: &str, params: &Value) -> (bool, Option<Value>, O
                 Ok(category) => category,
                 Err(error) => return (false, None, Some(error)),
             };
-            crate::chrome_stored::analyze_stored_data(&profile, category).and_then(value_from_result)
+            crate::chrome::stored::analyze_stored_data(&profile, category).and_then(value_from_result)
         }
         "cancelChromeAnalysis" => {
-            crate::chrome_analysis::cancel_chrome_analysis();
+            crate::chrome::analysis::cancel_chrome_analysis();
             Ok(Value::Null)
         }
         "listChromeProfiles" => {

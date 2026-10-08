@@ -13,7 +13,7 @@ mod imp {
         CreateEventW, OpenEventW, SetEvent, WaitForSingleObject, EVENT_MODIFY_STATE,
     };
 
-    use crate::window_shell;
+    use super as window_shell;
 
     const SHOW_UI_EVENT: &str = "Local\\com.dailyhuddle.desktop.show-ui";
     static WATCHER_STARTED: AtomicBool = AtomicBool::new(false);

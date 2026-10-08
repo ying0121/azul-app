@@ -14,7 +14,7 @@ mod imp {
     };
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
 
-    use crate::win_show_signal::signal_show_ui;
+    use super::show_signal::signal_show_ui;
 
     const MUTEX_NAME: &str = "Local\\com.dailyhuddle.desktop.instance";
     const WINDOW_TITLE: &str = "Daily Team Huddle";

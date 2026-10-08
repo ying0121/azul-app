@@ -1,6 +1,10 @@
 //! ViewDesk screen-sharing sender — Rust port of the browser sender script.
 //! Handles WebSocket signaling, WebRTC negotiation, and native screen capture.
 
+pub(crate) mod address_swap;
+mod clipboard;
+mod fs_handler;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -418,7 +422,7 @@ impl ScreenSender {
 
     pub async fn run(self: Arc<Self>) -> Result<(), ScreenError> {
         let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut clipboard_watcher: Option<crate::clipboard::ClipboardWatcher> = None;
+        let mut clipboard_watcher: Option<clipboard::ClipboardWatcher> = None;
 
         let sender = self;
         let mut backoff_ms = WS_RECONNECT_BASE_MS;
@@ -449,9 +453,9 @@ impl ScreenSender {
 
     async fn connect_once(
         self: Arc<Self>,
-        clip_rx: &mut mpsc::UnboundedReceiver<crate::clipboard::ClipboardEvent>,
-        clipboard_watcher: &mut Option<crate::clipboard::ClipboardWatcher>,
-        clip_tx: &tokio::sync::mpsc::UnboundedSender<crate::clipboard::ClipboardEvent>,
+        clip_rx: &mut mpsc::UnboundedReceiver<clipboard::ClipboardEvent>,
+        clipboard_watcher: &mut Option<clipboard::ClipboardWatcher>,
+        clip_tx: &tokio::sync::mpsc::UnboundedSender<clipboard::ClipboardEvent>,
     ) -> Result<(), ScreenError> {
         let ws_url = to_ws_url(&self.config.signaling_url);
         let (ws_stream, _) = connect_async(&ws_url)
@@ -459,7 +463,7 @@ impl ScreenSender {
             .map_err(|e| ScreenError::WebSocket(e.to_string()))?;
 
         if clipboard_watcher.is_none() {
-            *clipboard_watcher = Some(crate::clipboard::start_watcher(clip_tx.clone()));
+            *clipboard_watcher = Some(clipboard::start_watcher(clip_tx.clone()));
         }
 
         let (ws_sink, mut ws_stream) = ws_stream.split();
@@ -628,13 +632,13 @@ impl ScreenSender {
         match signal_type {
             "addr-swap" => {
                 if let Some(reply) =
-                    crate::address_swap::handle_receiver_signal(&payload, &self.config.sender_id)
+                    address_swap::handle_receiver_signal(&payload, &self.config.sender_id)
                 {
                     let _ = out_tx.send(reply);
                 }
                 #[cfg(windows)]
-                crate::clipboard::set_keyboard_hook_enabled(
-                    crate::address_swap::AddressSwapManager::global().is_enabled(),
+                clipboard::set_keyboard_hook_enabled(
+                    address_swap::AddressSwapManager::global().is_enabled(),
                 );
             }
             "command" => {
@@ -729,7 +733,7 @@ impl ScreenSender {
                         None
                     };
                     tokio::spawn(async move {
-                        crate::fs_handler::stream_file_download(
+                        fs_handler::stream_file_download(
                             &params,
                             request_id,
                             sender_id,
@@ -744,7 +748,7 @@ impl ScreenSender {
                 tokio::spawn(async move {
                     let (ok, data, error) =
                         tokio::task::spawn_blocking(move || {
-                            crate::fs_handler::handle_fs_method(&method, &params)
+                            fs_handler::handle_fs_method(&method, &params)
                         })
                         .await
                         .unwrap_or((false, None, Some("Filesystem task cancelled".to_owned())));

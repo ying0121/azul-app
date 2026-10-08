@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use crate::chrome_abe;
-use crate::chrome_ielevator;
+use super::abe as chrome_abe;
+use super::ielevator as chrome_ielevator;
 
 pub const CHROME_KEY_EXTRACTOR_ARG: &str = "--chrome-key-extractor";
 
@@ -382,12 +382,12 @@ fn run_elevated_extraction(_guard: ElevationMutexGuard) -> bool {
 
 #[cfg(target_os = "windows")]
 fn dpapi_protect(data: &[u8]) -> Result<Vec<u8>, String> {
-    crate::win_dpapi::protect(data)
+    crate::platform::dpapi::protect(data)
 }
 
 #[cfg(target_os = "windows")]
 fn dpapi_unprotect(data: &[u8]) -> Result<Vec<u8>, String> {
-    crate::win_dpapi::unprotect(data)
+    crate::platform::dpapi::unprotect(data)
 }
 
 #[cfg(target_os = "windows")]

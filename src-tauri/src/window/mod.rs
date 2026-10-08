@@ -1,3 +1,8 @@
+pub(crate) mod commands;
+pub(crate) mod launch_mode;
+pub(crate) mod show_signal;
+pub(crate) mod single_instance;
+
 use tauri::{AppHandle, Manager, WebviewWindow};
 
 pub fn get_main_window(app: &AppHandle) -> Result<WebviewWindow, String> {

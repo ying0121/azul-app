@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-use crate::window_shell;
+use super as window_shell;
 
 #[tauri::command]
 pub fn window_minimize(app: AppHandle) -> Result<(), String> {
